@@ -9,6 +9,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import CallbackQuery
 
 import channels
+import commands
 import db
 import ui
 from config import ADMIN_IDS, BOT_TOKEN, DB_PATH, PIXPAYZ_POLL_SECONDS
@@ -162,6 +163,11 @@ async def main():
         log.warning("API key PixPayz kosong — deposit QRIS belum bisa dibuat")
     me = await bot.me()
     log.info("Bot @%s berjalan", me.username)
+    try:
+        await commands.setup(bot)
+        log.info("Bot Commands Menu terpasang")
+    except Exception:
+        log.warning("Gagal memasang Bot Commands Menu", exc_info=True)
     task = asyncio.create_task(worker(bot))
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

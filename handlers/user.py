@@ -71,13 +71,63 @@ async def menu_cb(c: CallbackQuery, state: FSMContext):
     await _menu(c, state)
 
 
-@router.callback_query(F.data.startswith("top:"))
-async def top_orders_cb(c: CallbackQuery):
-    period = c.data.split(":", 1)[1]
+# Command aliases untuk Bot Commands Menu (bukan keyboard). GateMiddleware sudah
+# memblokir perintah ini sampai user gabung ke dua channel.
+@router.message(Command("layanan", "order"))
+async def layanan_cmd(m: Message, state: FSMContext):
+    await ord_cats(m, state)
+
+
+@router.message(Command("deposit"))
+async def deposit_cmd(m: Message, state: FSMContext):
+    await dep_menu(m, state)
+
+
+@router.message(Command("pesanan"))
+async def pesanan_cmd(m: Message):
+    await my_orders(m)
+
+
+@router.message(Command("riwayat"))
+async def riwayat_cmd(m: Message):
+    await history(m)
+
+
+@router.message(Command("profil"))
+async def profil_cmd(m: Message):
+    await profile(m)
+
+
+@router.message(Command("referral"))
+async def referral_cmd(m: Message):
+    await referral(m)
+
+
+@router.message(Command("toko"))
+async def toko_cmd(m: Message):
+    await shop(m)
+
+
+@router.message(Command("misi"))
+async def misi_cmd(m: Message):
+    await missions(m)
+
+
+async def _top_board(ev, period: str):
     if period not in ("all", "week", "month"):
         period = "all"
     block = await ui.top_spender_block(10, period)
-    await show(c, f"{LINE}\n{block}\n\nUrutan dari total transaksi rupiah terbesar.", ui.top_kb(period))
+    await show(ev, f"{LINE}\n{block}\n\nUrutan dari total transaksi rupiah terbesar.", ui.top_kb(period))
+
+
+@router.message(Command("top"))
+async def top_cmd(m: Message):
+    await _top_board(m, "all")
+
+
+@router.callback_query(F.data.startswith("top:"))
+async def top_orders_cb(c: CallbackQuery):
+    await _top_board(c, c.data.split(":", 1)[1])
 
 
 @router.callback_query(F.data == "misc")
