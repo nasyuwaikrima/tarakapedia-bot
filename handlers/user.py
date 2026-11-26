@@ -71,13 +71,13 @@ async def menu_cb(c: CallbackQuery, state: FSMContext):
     await _menu(c, state)
 
 
-@router.callback_query(F.data == "top")
+@router.callback_query(F.data.startswith("top:"))
 async def top_orders_cb(c: CallbackQuery):
-    if not await db.top_spenders(10):
-        return await show(c, f"{LINE}\n🏆 <b>TOP TRANSAKSI</b>\n{LINE}\n\n"
-                             "Belum ada transaksi. Jadilah yang pertama ya, kak!", kb(BACK))
-    block = await ui.top_spender_block(10)
-    await show(c, f"{LINE}\n{block}\n\nUrutan dari total transaksi rupiah terbesar.", kb(BACK))
+    period = c.data.split(":", 1)[1]
+    if period not in ("all", "week", "month"):
+        period = "all"
+    block = await ui.top_spender_block(10, period)
+    await show(c, f"{LINE}\n{block}\n\nUrutan dari total transaksi rupiah terbesar.", ui.top_kb(period))
 
 
 @router.callback_query(F.data == "gate:check")

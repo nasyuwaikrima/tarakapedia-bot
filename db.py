@@ -570,11 +570,21 @@ async def claim_mission(uid, mid):
 
 
 # ---------- stats ----------
-async def top_spenders(limit: int = 3):
-    """Papan peringkat user berdasarkan total transaksi rupiah (tie: jumlah order)."""
-    return await q("SELECT id, name, username, total_order, total_spent FROM users "
-                   "WHERE total_spent>0 ORDER BY total_spent DESC, total_order DESC, id ASC LIMIT ?",
-                   (max(1, min(50, int(limit))),))
+async def top_spenders(limit: int = 3, period: str = "all"):
+    """Papan peringkat rupiah: all / week (7 hari) / month (30 hari)."""
+    limit = max(1, min(50, int(limit)))
+    if period not in ("week", "month"):
+        return await q("SELECT id, name, username, total_order, total_spent FROM users "
+                       "WHERE total_spent>0 ORDER BY total_spent DESC, total_order DESC, id ASC LIMIT ?",
+                       (limit,))
+    days = 7 if period == "week" else 30
+    since = (datetime.now(WIB) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    return await q("SELECT u.id, u.name, u.username, COUNT(o.id) total_order, "
+                   "COALESCE(SUM(o.price),0) total_spent FROM users u "
+                   "JOIN orders o ON o.user_id=u.id "
+                   "WHERE o.created_at>=? AND o.status!='Canceled' "
+                   "GROUP BY u.id HAVING SUM(o.price)>0 "
+                   "ORDER BY SUM(o.price) DESC, COUNT(o.id) DESC, u.id ASC LIMIT ?", (since, limit))
 
 
 async def global_stats():

@@ -63,13 +63,21 @@ def main_kb(uid: int | None = None):
         [("📦 Pesanan Saya", "myord"), ("🧾 Riwayat", "hist")],
         [("📱 Toko App", "shop"), ("👤 Profil Saya", "prof")],
         [("🎁 Kode Referral", "ref"), ("🎯 Misi Special", "msn")],
-        [("🏆 Top Transaksi", "top")],
+        [("🏆 Top Transaksi", "top:all"), ("📅 Mingguan", "top:week")],
+        [("🗓 Bulanan", "top:month")],
         [("📢 Channel Kami", CHANNEL_REGISTRY_URL), ("📜 Log Transaksi", CHANNEL_LOG_URL)],
         [("🌐 Website", WEBSITE_URL), ("💬 Hubungi Admin", ADMIN_CONTACT_URL)],
     ]
     if uid in ADMIN_IDS:
         rows.append([("🛠 Panel Admin", "adm")])
     return kb(*rows)
+
+
+def top_kb(active: str = "all"):
+    """Pilihan periode papan peringkat."""
+    opts = [("all", "🏆 Semua"), ("week", "📅 Mingguan"), ("month", "🗓 Bulanan")]
+    rows = [[(("✅ " if k == active else "") + label, f"top:{k}") for k, label in opts]]
+    return kb(*rows, BACK)
 
 
 async def answer_cb(c: CallbackQuery, text: str | None = None, alert: bool = False):
@@ -126,18 +134,23 @@ async def show_menu(ev, caption: str, markup=None):
         await ev.answer_photo(FSInputFile(photo), caption=caption[:1000], reply_markup=markup)
 
 
-async def top_spender_block(limit: int = 3) -> str:
+async def top_spender_block(limit: int = 3, period: str = "all") -> str:
     """Papan peringkat transaksi rupiah dengan username yang bisa diklik."""
-    rows = await db.top_spenders(limit)
+    rows = await db.top_spenders(limit, period)
+    title = {
+        "all": "🏆 <b>TOP TRANSAKSI</b>",
+        "week": "📅 <b>TOP MINGGUAN</b>\n⏳ 7 hari terakhir",
+        "month": "🗓 <b>TOP BULANAN</b>\n⏳ 30 hari terakhir",
+    }.get(period, "🏆 <b>TOP TRANSAKSI</b>")
     if not rows:
-        return "🏆 <b>TOP TRANSAKSI</b>\nBelum ada transaksi. Jadilah yang pertama! 🚀"
+        return f"{title}\nBelum ada transaksi. Jadilah yang pertama! 🚀"
     medals = ("🥇", "🥈", "🥉")
     lines = []
     for i, r in enumerate(rows):
         rank = medals[i] if i < len(medals) else f"{i + 1}."
         label = f"@{r['username']}" if r["username"] else (r["name"] or f"ID {r['id']}")
         lines.append(f"{rank} {user_link(r['id'], label, r['username'])} • <b>{rp(r['total_spent'])}</b>")
-    return "🏆 <b>TOP TRANSAKSI</b>\n" + "\n".join(lines)
+    return title + "\n" + "\n".join(lines)
 
 
 async def menu_caption(uid: int) -> str:
