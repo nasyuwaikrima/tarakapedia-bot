@@ -73,10 +73,10 @@ async def menu_cb(c: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "top")
 async def top_orders_cb(c: CallbackQuery):
-    block = await ui.top_order_block(10)
-    if not block:
+    if not await db.top_orders(10):
         return await show(c, f"{LINE}\n🏆 <b>TOP ORDER</b>\n{LINE}\n\n"
                              "Belum ada order. Jadilah yang pertama ya, kak!", kb(BACK))
+    block = await ui.top_order_block(10)
     await show(c, f"{LINE}\n{block}\n\nUrutan dari total order terbanyak.", kb(BACK))
 
 

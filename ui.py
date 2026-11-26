@@ -130,7 +130,7 @@ async def top_order_block(limit: int = 3) -> str:
     """Papan peringkat top order dengan username yang bisa diklik."""
     rows = await db.top_orders(limit)
     if not rows:
-        return ""
+        return "🏆 <b>TOP ORDER</b>\nBelum ada order. Jadilah yang pertama! 🚀"
     medals = ("🥇", "🥈", "🥉")
     lines = []
     for i, r in enumerate(rows):
@@ -148,9 +148,7 @@ async def menu_caption(uid: int) -> str:
          f"┌ 💰 Saldo  : <b>{rp(u['balance'])}</b>\n"
          f"├ 📦 Order  : <b>{num(u['total_order'])}</b> kali\n"
          f"└ 👥 Member : <b>{num(s['users'])}</b> orang\n\n")
-    top = await top_order_block(3)
-    if top:
-        t += top + "\n\n"
+    t += await top_order_block(3) + "\n\n"
     t += ("⚡ Pesanan diproses otomatis 24/7\n"
           "💸 Deposit QRIS — cek lunas tanpa ribet\n"
           "🎁 Ajak teman, dapat komisi referral\n\n"
