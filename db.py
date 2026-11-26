@@ -321,6 +321,26 @@ async def get_user(uid):
     return await q1("SELECT * FROM users WHERE id=?", (uid,))
 
 
+async def list_users(page: int = 0, per: int = 8, search: str = ""):
+    """Daftar semua user untuk panel admin, bisa dicari & dibagi halaman."""
+    page, per = max(0, int(page)), max(1, min(20, int(per)))
+    s = (search or "").strip().lstrip("@").lower()
+    where, args = "", []
+    if s:
+        if s.isdigit():
+            where = "WHERE id=? OR LOWER(COALESCE(name,'')) LIKE ? OR LOWER(COALESCE(username,'')) LIKE ?"
+            args = [int(s), f"%{s}%", f"%{s}%"]
+        else:
+            where = "WHERE LOWER(COALESCE(name,'')) LIKE ? OR LOWER(COALESCE(username,'')) LIKE ?"
+            args = [f"%{s}%", f"%{s}%"]
+    total = (await q1(f"SELECT COUNT(*) n FROM users {where}", args))["n"]
+    pages = max(1, (total + per - 1) // per)
+    page = min(page, pages - 1)
+    rows = await q(f"SELECT * FROM users {where} ORDER BY id DESC LIMIT ? OFFSET ?",
+                   (*args, per, page * per))
+    return rows, total, page, pages
+
+
 async def set_channel_status(uid, status: str):
     """Simpan status register channel. Return status lama (panggilnya yang cek perubahannya)."""
     u = await get_user(uid)

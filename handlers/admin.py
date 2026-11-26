@@ -28,6 +28,7 @@ router.callback_query.filter(IsAdmin())
 
 class A(StatesGroup):
     find_user = State()
+    user_search = State()
     bal = State()
     svc_add = State()
     svc_price = State()
@@ -72,6 +73,7 @@ async def panel_text():
 def panel_kb():
     return kb(
         [("📊 Statistik", "adm:stats"), ("👥 Kelola User", "adm:usr")],
+        [("📋 Daftar User", "adm:ulist"), ("🔎 Cari User", "adm:usearch")],
         [("🛒 Layanan", "adm:svc:0"), ("📱 Produk App", "adm:prd")],
         [("📦 Pesanan", "adm:ord"), ("💳 Deposit", "adm:dep")],
         [("🎯 Misi", "adm:msn"), ("⚙️ Pengaturan", "adm:set")],
@@ -300,6 +302,77 @@ async def find_user(m: Message, state: FSMContext):
     await state.clear()
     t, k = await user_card(row["id"])
     await m.answer(t, reply_markup=k)
+
+
+async def user_list_page(page: int = 0, search: str = "", per: int = 8):
+    """Halaman daftar user + keyboard kartu, pencarian, dan navigasi."""
+    rows, total, page, pages = await db.list_users(page, per, search)
+    label = esc(search) if search else "Semua"
+    t = (f"{LINE}\n👥 <b>DAFTAR USER</b>\n{LINE}\n\n"
+         f"🔎 {label} • <b>{total}</b> user • halaman <b>{page + 1}/{pages}</b>\n\n")
+    kr = []
+    for u in rows:
+        uname = "@" + esc(u["username"]) if u["username"] else esc(u["name"] or f"ID {u['id']}")
+        ch = {"joined": "✅ Join", "out": "❌ Perlu gabung"}.get(u["channel_status"], "⏳ Belum dicek")
+        t += (f"{'🚫' if u['banned'] else '👤'} <b>{uname}</b> <code>{u['id']}</code>\n"
+              f"   💰 {rp(u['balance'])} • 📦 {u['total_order']} • {rp(u['total_spent'])}\n"
+              f"   {ch} • <i>{esc(u['joined_at'] or '-')}</i>\n")
+        kr.append([(f"{'🚫' if u['banned'] else '👤'} {u['id']} • {(u['username'] or u['name'] or 'User')[:18]}",
+                    f"adm:ud:{u['id']}")])
+    if not rows:
+        t += "Tidak ada user yang cocok."
+    nav = []
+    if page > 0:
+        nav.append(("◀️", f"adm:ulist:{page - 1}"))
+    if page + 1 < pages:
+        nav.append(("▶️", f"adm:ulist:{page + 1}"))
+    if nav:
+        kr.append(nav)
+    kr += [[("🔎 Cari User", "adm:usearch")], PANEL]
+    return t, kb(*kr)
+
+
+@router.message(Command("users"))
+async def users_cmd(m: Message, state: FSMContext):
+    await state.clear()
+    t, k = await user_list_page()
+    await m.answer(t, reply_markup=k)
+
+
+@router.callback_query(F.data == "adm:ulist")
+async def users_list_cb(c: CallbackQuery, state: FSMContext):
+    d = await state.get_data()
+    t, k = await user_list_page(0, d.get("user_search", ""))
+    await show(c, t, k)
+
+
+@router.callback_query(F.data.startswith("adm:ulist:"))
+async def users_page_cb(c: CallbackQuery, state: FSMContext):
+    d = await state.get_data()
+    t, k = await user_list_page(int(c.data.split(":")[2]), d.get("user_search", ""))
+    await show(c, t, k)
+
+
+@router.callback_query(F.data == "adm:usearch")
+async def user_search_cb(c: CallbackQuery, state: FSMContext):
+    await prompt(c, state, A.user_search, "🔎 Kirim <b>nama</b>, <b>@username</b>, atau <b>ID</b> user:")
+
+
+@router.message(A.user_search)
+async def user_search_msg(m: Message, state: FSMContext):
+    s = (m.text or "").strip().lstrip("/")
+    await state.update_data(user_search=s)
+    await state.set_state(None)
+    t, k = await user_list_page(0, s)
+    await m.answer(t, reply_markup=k)
+
+
+@router.callback_query(F.data.startswith("adm:ud:"))
+async def user_detail_cb(c: CallbackQuery):
+    t, k = await user_card(int(c.data.split(":")[2]))
+    if not t:
+        return await answer_cb(c, "User tidak ditemukan.", True)
+    await show(c, t, k)
 
 
 @router.callback_query(F.data.startswith("adm:bal:"))
