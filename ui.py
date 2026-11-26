@@ -58,17 +58,17 @@ def kb(*rows):
 
 def main_kb(uid: int | None = None):
     """Menu utama: alur deposit → order → cek hasil, semua tombol terkelompok."""
+    # Maksimal 5 baris & 3 tombol per baris supaya foto menu masih muat di layar.
     rows = [
-        [("💰 Deposit QRIS", "dep"), ("🛒 Order Termurah", "ord")],
-        [("📦 Pesanan Saya", "myord"), ("🧾 Riwayat", "hist")],
-        [("📱 Toko App", "shop"), ("👤 Profil Saya", "prof")],
-        [("🎁 Kode Referral", "ref"), ("🎯 Misi Special", "msn")],
-        [("🏆 Top Transaksi", "top:all")],
-        [("📢 Channel Kami", CHANNEL_REGISTRY_URL), ("📜 Log Transaksi", CHANNEL_LOG_URL)],
-        [("🌐 Website", WEBSITE_URL), ("💬 Hubungi Admin", ADMIN_CONTACT_URL)],
+        [("💰 Deposit", "dep"), ("🛒 Order", "ord"), ("📦 Pesanan", "myord")],
+        [("🧾 Riwayat", "hist"), ("📱 Toko App", "shop"), ("👤 Profil", "prof")],
+        [("🎁 Referral", "ref"), ("🎯 Misi", "msn"), ("🏆 Top Transaksi", "top:all")],
+        [("📢 Channel Kami", CHANNEL_REGISTRY_URL), ("📜 Log Transaksi", CHANNEL_LOG_URL),
+         ("🌐 Website", WEBSITE_URL)],
+        [("💬 Hubungi Admin", ADMIN_CONTACT_URL)],
     ]
     if uid in ADMIN_IDS:
-        rows.append([("🛠 Panel Admin", "adm")])
+        rows[-1].append(("🛠 Panel Admin", "adm"))
     return kb(*rows)
 
 
