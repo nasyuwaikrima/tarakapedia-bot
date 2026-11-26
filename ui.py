@@ -2,7 +2,7 @@ import html
 import time
 
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton
+from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InputMediaPhoto
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import db
@@ -78,13 +78,17 @@ async def answer_cb(c: CallbackQuery, text: str | None = None, alert: bool = Fal
 
 
 async def show(ev, text: str, markup=None):
-    """Edit pesan jika dari tombol, kirim baru jika dari pesan biasa."""
+    """Edit pesan yang sama (termasuk caption foto) — jangan kirim pesan baru dari tombol."""
     if isinstance(ev, CallbackQuery):
+        m = ev.message
         try:
-            await ev.message.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
+            if getattr(m, "photo", None):
+                await m.edit_caption(caption=text[:1000], reply_markup=markup)
+            else:
+                await m.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
         except TelegramBadRequest as e:
             if "not modified" not in str(e):
-                await ev.message.answer(text, reply_markup=markup, disable_web_page_preview=True)
+                await m.answer(text, reply_markup=markup, disable_web_page_preview=True)
         await answer_cb(ev)
     else:
         await ev.answer(text, reply_markup=markup, disable_web_page_preview=True)
@@ -96,16 +100,25 @@ def menu_photo():
 
 
 async def show_menu(ev, caption: str, markup=None):
-    """Menu utama dikirim sebagai foto + caption; fallback ke teks bila foto tidak ada."""
+    """Menu foto + caption. Dari tombol: edit pesan yang sama, bukan delete + kirim ulang."""
     photo = menu_photo()
     if not photo.exists():
         return await show(ev, caption, markup)
     if isinstance(ev, CallbackQuery):
+        m = ev.message
         try:
-            await ev.message.delete()
-        except TelegramBadRequest:
-            pass
-        await ev.message.answer_photo(FSInputFile(photo), caption=caption[:1000], reply_markup=markup)
+            await m.edit_media(media=InputMediaPhoto(media=FSInputFile(photo), caption=caption[:1000]),
+                               reply_markup=markup)
+        except TelegramBadRequest as e:
+            if "not modified" not in str(e):
+                try:
+                    if getattr(m, "photo", None):
+                        await m.edit_caption(caption=caption[:1000], reply_markup=markup)
+                    else:
+                        await m.edit_text(caption, reply_markup=markup, disable_web_page_preview=True)
+                except TelegramBadRequest as e2:
+                    if "not modified" not in str(e2):
+                        await m.answer_photo(FSInputFile(photo), caption=caption[:1000], reply_markup=markup)
         await answer_cb(ev)
     else:
         await ev.answer_photo(FSInputFile(photo), caption=caption[:1000], reply_markup=markup)
@@ -130,16 +143,18 @@ async def menu_caption(uid: int) -> str:
 
 
 async def show_photo(ev, photo, caption: str, markup=None):
-    """Kirim foto dari URL/path dengan fallback teks jika Telegram gagal fetch."""
+    """Foto QRIS/invoice. Dari tombol: ganti media pesan yang sama agar tidak spam."""
     if isinstance(ev, CallbackQuery):
+        m = ev.message
         try:
-            await ev.message.delete()
-        except TelegramBadRequest:
-            pass
-        try:
-            await ev.message.answer_photo(photo=photo, caption=caption[:1000], reply_markup=markup)
-        except TelegramBadRequest:
-            await ev.message.answer(caption, reply_markup=markup, disable_web_page_preview=True)
+            await m.edit_media(media=InputMediaPhoto(media=photo, caption=caption[:1000]),
+                               reply_markup=markup)
+        except TelegramBadRequest as e:
+            if "not modified" not in str(e):
+                try:
+                    await m.answer_photo(photo=photo, caption=caption[:1000], reply_markup=markup)
+                except TelegramBadRequest:
+                    await m.answer(caption, reply_markup=markup, disable_web_page_preview=True)
         await answer_cb(ev)
     else:
         try:
