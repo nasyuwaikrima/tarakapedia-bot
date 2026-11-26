@@ -6,7 +6,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, Inpu
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import db
-from config import (ADMIN_CONTACT_URL, ADMIN_IDS, BOT_NAME, CHANNEL_LOG,
+from config import (ADMIN_CONTACT_URL, ADMIN_IDS, BOT_NAME, CHANNEL_LOG, CHANNEL_LOG_URL,
                     CHANNEL_REGISTRY_URL, CUSTOM_MENU_PHOTO, MENU_PHOTO, WEBSITE_URL)
 
 START = time.time()
@@ -63,6 +63,7 @@ def main_kb(uid: int | None = None):
         [("📦 Pesanan Saya", "myord"), ("🧾 Riwayat", "hist")],
         [("📱 Toko App", "shop"), ("👤 Profil Saya", "prof")],
         [("🎁 Kode Referral", "ref"), ("🎯 Misi Special", "msn")],
+        [("📢 Channel Kami", CHANNEL_REGISTRY_URL), ("📜 Log Transaksi", CHANNEL_LOG_URL)],
         [("🌐 Website", WEBSITE_URL), ("💬 Hubungi Admin", ADMIN_CONTACT_URL)],
     ]
     if uid in ADMIN_IDS:
@@ -167,7 +168,7 @@ async def deposit_paid_notice(bot, result):
     """Notifikasi deposit lunas — dipakai tombol cek manual dan polling."""
     if not result:
         return
-    d, ref, bonus = result
+    d, _ref, _bonus = result  # komisi dipindah ke order sukses, bukan deposit
     u = await db.get_user(d["user_id"])
     try:
         await bot.send_message(d["user_id"],
@@ -177,16 +178,22 @@ async def deposit_paid_notice(bot, result):
     except Exception:
         pass
     who = user_link(d["user_id"], u["name"] if u else None, u["username"] if u else None)
-    if ref:
-        try:
-            await bot.send_message(ref, f"💸 Komisi referral <b>{rp(bonus)}</b> dari deposit downline Anda.")
-        except Exception:
-            pass
-        await log_channel(bot, f"🎁 Komisi referral <b>{rp(bonus)}</b> → <code>{ref}</code> "
-                               f"dari deposit {who}")
     await notify_admins(bot, f"💰 Deposit QRIS #{d['id']} dari <code>{d['user_id']}</code>: {rp(d['amount'])}")
     await log_channel(bot, f"✅ <b>DEPOSIT LUNAS</b> #{d['id']}\n👤 {who}\n💰 {rp(d['amount'])}\n"
                            f"🏦 Saldo sekarang: <b>{rp(u['balance'] if u else 0)}</b>")
+
+
+async def referral_paid_notice(bot, oid: int, bonus: int, ref_id: int):
+    """Komisi referral hanya dikirim saat order benar-benar selesai."""
+    if not bonus or not ref_id:
+        return
+    try:
+        await bot.send_message(ref_id, f"💸 Komisi referral <b>{rp(bonus)}</b> dari order "
+                                       f"<code>#{oid}</code> yang sudah selesai. Makasih ya!")
+    except Exception:
+        pass
+    await log_channel(bot, f"🎁 <b>KOMISI REFERRAL</b> #{oid}\n"
+                           f"👤 <code>{ref_id}</code> • {rp(bonus)} dari margin order selesai")
 
 
 async def notify_admins(bot, text: str):
