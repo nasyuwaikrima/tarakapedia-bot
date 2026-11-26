@@ -729,5 +729,8 @@ async def claim(c: CallbackQuery):
 # ---------- fallback ----------
 @router.message(StateFilter(None))
 async def fallback(m: Message):
+    cmd = (m.text or "").strip().split(maxsplit=1)[0].split("@")[0].lower()
+    if cmd in ("/admin", "/users"):
+        return await m.answer("⛔ Perintah ini khusus admin ya, kak.")
     await m.answer("Hai kak 👋 Semua menu ada di bawah ya — deposit, order termurah, dan cek pesanan.",
                    reply_markup=ui.main_kb(m.from_user.id))
