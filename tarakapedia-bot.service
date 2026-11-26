@@ -1,0 +1,15 @@
+[Unit]
+Description=Tarakapedia SMM Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/tarakapedia-bot
+ExecStart=/opt/tarakapedia-bot/venv/bin/python main.py
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target
