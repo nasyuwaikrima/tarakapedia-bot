@@ -593,8 +593,11 @@ async def dep_detail(c: CallbackQuery):
     if not d:
         return await c.answer("Tidak ditemukan.", show_alert=True)
     await show(c, f"💳 <b>Deposit #{d['id']}</b>\n\n├ User : <code>{d['user_id']}</code>\n├ Nominal : <b>{rp(d['amount'])}</b>\n"
-                  f"├ Metode : {d['method']}\n├ Ref : {d['ref']}\n├ Status : {d['status']}\n└ {d['created_at']}",
-               kb([("✅ Setujui", f"adm:da:{d['id']}"), ("❌ Tolak", f"adm:dr:{d['id']}")], [("⬅️ Daftar", "adm:dep")]))
+                  f"├ Metode : {d['method']}\n├ Invoice : <code>{esc(d['invoice_id'] or d['ref'] or '-')}</code>\n"
+                  f"├ Status : {d['status']}\n└ {d['created_at']}\n\n"
+                  f"Invoice QRIS tidak bisa dibatalkan. Tombol di bawah hanya untuk konfirmasi manual "
+                  f"jika webhook/PixPayz delay.",
+               kb([("✅ Konfirmasi Manual", f"adm:da:{d['id']}")], [("⬅️ Daftar", "adm:dep")]))
 
 
 @router.callback_query(F.data.startswith("adm:da:"))
@@ -602,22 +605,9 @@ async def dep_approve(c: CallbackQuery):
     did = int(c.data.split(":")[2])
     res = await db.confirm_deposit(did)
     if not res:
-        return await c.answer("Sudah diproses.", show_alert=True)
-    d, ref, bonus = res
-    try:
-        await c.bot.send_message(d["user_id"], f"✅ Deposit <b>{rp(d['amount'])}</b> berhasil ditambahkan ke saldo.")
-        if ref:
-            await c.bot.send_message(ref, f"💸 Komisi referral <b>{rp(bonus)}</b> dari deposit downline.")
-    except Exception:
-        pass
-    await show(c, f"✅ Deposit #{did} disetujui.", kb([("⬅️ Daftar", "adm:dep")]))
-
-
-@router.callback_query(F.data.startswith("adm:dr:"))
-async def dep_reject(c: CallbackQuery):
-    did = int(c.data.split(":")[2])
-    await db.x("UPDATE deposits SET status='rejected' WHERE id=? AND status='pending'", (did,))
-    await show(c, f"❌ Deposit #{did} ditolak.", kb([("⬅️ Daftar", "adm:dep")]))
+        return await answer_cb(c, "Sudah diproses.", True)
+    await ui.deposit_paid_notice(c.bot, res)
+    await show(c, f"✅ Deposit #{did} dikonfirmasi manual.", kb([("⬅️ Daftar", "adm:dep")]))
 
 
 # ---------- misi ----------

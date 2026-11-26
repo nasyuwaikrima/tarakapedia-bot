@@ -35,7 +35,9 @@ Bot SMM panel berbasis Telegram dengan **order real ke API MedanPedia**, katalog
 - ✅ **Harga dikelola admin**: margin global, harga manual per layanan, kunci harga, dan batas bawah harga agar tidak pernah rugi.
 - ✅ **Modal provider disembunyikan** dari semua tampilan user. User hanya melihat harga jual.
 - ✅ Menu utama dikirim sebagai **foto + caption**; foto bisa diganti admin lewat panel.
-- ✅ Deposit (masih mode demo), toko produk + stok, referral, misi, broadcast, backup DB, statistik.
+- ✅ Deposit **QRIS PixPayz real**: invoice dibuat otomatis, QRIS bisa dilihat ulang kapan saja lewat riwayat, status lunas terdeteksi otomatis (webhook + polling), invoice **tidak bisa dibatalkan**.
+- ✅ Batas **3 invoice aktif per user** (bisa diatur admin) — antrean deposit tetap terkendali.
+- ✅ Toko produk + stok, referral, misi, broadcast, backup DB, statistik.
 - ✅ Migrasi database otomatis: database lama tetap aman saat di-upgrade.
 - ✅ Kode terpisah per lapisan (config, db, providers, ui, handlers) agar mudah dirawat.
 
@@ -51,8 +53,9 @@ Bot SMM panel berbasis Telegram dengan **order real ke API MedanPedia**, katalog
 | `ui.py` | Keyboard, format Rupiah, teks menu, pengiriman **foto + caption**. |
 | `handlers/user.py` | Alur user: deposit, order bertipe, pesanan, refill, toko, referral, misi. |
 | `handlers/admin.py` | Panel admin: provider API, margin, layanan, user, order, deposit, foto menu, dll. |
-| `main.py` | Entry point, middleware keamanan, worker sinkronisasi status & katalog. |
-| `payments.py` | Gateway deposit (saat ini demo). |
+| `main.py` | Entry point, middleware keamanan, worker sinkronisasi status order, invoice QRIS & katalog. |
+| `payments.py` | Gateway QRIS PixPayz: profil, buat invoice, cek invoice, rate limiter 2 req/detik. |
+| `webhook.py` | Penerima `deposit.paid` / `deposit.expired` dari PixPayz. |
 | `assets/menu.png` | Foto menu bawaan (bisa diganti dari panel admin). |
 | `data/tarakapedia.db` | Database SQLite (tidak ikut di-commit). |
 | `tarakapedia-bot.service` | Unit systemd untuk jalan 24/7. |
@@ -105,10 +108,23 @@ MEDANPEDIA_API_ID=11
 MEDANPEDIA_API_KEY=api_key_asli_dari_panel_medanpedia
 MEDANPEDIA_BASE_URL=https://api.medanpedia.co.id
 MEDANPEDIA_TIMEOUT=20
+
+# Wajib untuk deposit QRIS:
+PIXPAYZ_API_KEY=ISI_API_KEY_DARI_DASHBOARD_PIXPAYZ
+PIXPAYZ_BASE_URL=https://pixpayz.com
+PIXPAYZ_TIMEOUT=20
+PIXPAYZ_MIN_INTERVAL=0.6
+PIXPAYZ_WEBHOOK_PORT=8080
+PIXPAYZ_WEBHOOK_PATH=/webhook/pixpayz
+PIXPAYZ_POLL_SECONDS=20
+MAX_ACTIVE_DEPOSITS=3
 ```
 
 - `ADMIN_IDS` dipisah koma. Hanya ID ini yang bisa membuka `/admin`.
 - `MEDANPEDIA_API_ID` dan `MEDANPEDIA_API_KEY` **wajib** diisi; jika kosong, order ditolak dan saldo user dikembalikan otomatis (tidak ada order demo).
+- `PIXPAYZ_API_KEY` **wajib** diisi untuk deposit QRIS; API key hanya dibaca dari `.env`, tidak pernah ditaruh di kode.
+- `PIXPAYZ_MIN_INTERVAL=0.6` menjaga request tidak melewati batas **2 request/detik** PixPayz. Jangan dikurangi.
+- `MAX_ACTIVE_DEPOSITS=3` = batas invoice aktif per user. Bisa diubah juga dari **⚙️ Pengaturan → Batas invoice aktif per user**.
 - Jangan pernah commit `.env` — sudah masuk `.gitignore`.
 - Opsi foto menu: `MENU_PHOTO=assets/menu.png`, `CUSTOM_MENU_PHOTO=data/menu_photo.jpg`.
 
@@ -191,9 +207,9 @@ Ketik `/admin` atau tekan tombol **🛠 Panel Admin** di menu utama.
 | 🛒 Layanan | Lihat & ubah harga, on/off, kunci/buka auto harga, hapus, tambah manual (boleh dengan ID provider). |
 | 📱 Produk App | Produk digital + stok. |
 | 📦 Pesanan | Detail order, ubah status, refund, lihat ID provider & refill. |
-| 💳 Deposit | Setujui/tolak deposit demo. |
+| 💳 Deposit | Lihat invoice QRIS pending; konfirmasi manual hanya jika webhook/PixPayz delay. Tidak ada tombol batal/tolak. |
 | 🎯 Misi | Tambah/on-off/hapus misi. |
-| ⚙️ Pengaturan | Maintenance, komisi referral, bonus daftar, min deposit, pengumuman. |
+| ⚙️ Pengaturan | Maintenance, komisi referral, bonus daftar, min deposit, batas invoice aktif, pengumuman. |
 | 🌐 Provider API | Sync layanan, cek modal, atur margin, filter favorit, auto sync, refill & cek refill. |
 | 📸 Foto Menu | Upload foto menu baru atau kembalikan ke foto bawaan. |
 | 📢 Broadcast | Kirim pesan ke semua user. |
@@ -220,7 +236,8 @@ ID Provider dan tipe boleh kosong. Layanan dengan ID provider ikut dipakai untuk
 
 - `/start` → menu utama (foto + caption).
 - `/menu` → tampilkan menu lagi.
-- 💰 **Deposit Saldo** → pilih nominal / nominal custom (mode demo: tekan tombol bayar simulasi).
+- 💰 **Deposit Saldo** → invoice aktif langsung tampil dengan QRIS-nya; pilih nominal / nominal custom untuk membuat invoice baru (maks 3 aktif).
+- 🧾 **Riwayat Deposit** → lihat semua transaksi; ketuk salah satu untuk menampilkan QRIS/invoice lama lagi dan cek status.
 - 🛒 **Order Layanan** → kategori → layanan → target → jumlah (jika perlu) → field tambahan (jika perlu) → konfirmasi.
 - 📦 **Pesanan Saya** → status order, ID provider, refill.
 - Lainnya: toko aplikasi, riwayat, profil, kode referral, misi, website, hubungi admin.
@@ -247,9 +264,33 @@ Alias seperti `custom_comments`, `mention_hastag`, dan `mentions_custom_list` di
 
 ---
 
-## 11. Deposit, produk, referral, misi
+## 11. Deposit QRIS, produk, referral, misi
 
-- **Deposit** masih **demo**: user membuat tagihan, lalu menekan tombol “Bayar (Demo)”. Untuk produksi, ganti `payments.py` dengan gateway asli dan panggil `db.confirm_deposit(id)` dari webhook.
+### Alur deposit QRIS
+1. User pilih nominal (atau nominal custom) → bot memanggil `/api/createinvoice` PixPayz.
+2. Bot menyimpan `invoice_id`, `qris_image`, `payment_link`, dan `expired_at` ke database, lalu **langsung menampilkan QRIS** beserta tombol halaman bayar.
+3. Invoice **tidak bisa dibatalkan** — tidak ada tombol batal. Invoice yang belum dibayar otomatis tampil lagi di menu **💰 Deposit Saldo**, dan semua transaksi bisa dilihat di **📄 Riwayat Deposit** (ketuk untuk menampilkan QRIS lama + cek status).
+4. Saat PixPayz melaporkan `paid` lewat webhook, saldo user langsung ditambah. Jika webhook belum terpasang/terlambat, bot mengecek `/api/checkinvoice` tiap 20 detik sebagai cadangan (maks 20 invoice per siklus, bergilir agar tidak ada yang terlewat).
+5. Saat status `expired`, invoice ditandai kedaluwarsa dan slot aktif user terbebas. Konfirmasi bersifat **idempoten**: webhook, polling, dan tombol konfirmasi admin tidak bisa menambah saldo dua kali.
+6. **Batas 3 invoice aktif per user** (default). Setelah tercapai, pilihan nominal hilang sampai ada invoice yang lunas/kedaluwarsa — mencegah antrean deposit menumpuk.
+
+### Endpoint PixPayz yang dipakai
+Semua endpoint **GET** dengan query `apikey`:
+
+| Endpoint | Fungsi | Dipanggil dari |
+|---|---|---|
+| `/api/profile` | Cek profil & saldo merchant | Diagnosa gateway |
+| `/api/createinvoice` | Buat invoice QRIS (`amount`) | Tombol nominal deposit |
+| `/api/checkinvoice` | Cek status invoice (`id`) | Tombol 🔄 Cek Status, polling 20 detik |
+
+### Pasang webhook (disarankan)
+- URL webhook: `https://domain-anda/webhook/pixpayz` (port default `8080`, path bisa diubah di `.env`).
+- Buka port/firewall atau pasang reverse proxy, lalu daftarkan URL tersebut di dashboard PixPayz.
+- Bot membalas HTTP `200 ok` dengan cepat untuk event `deposit.paid` dan `deposit.expired` sehingga PixPayz tidak retry.
+- Jika webhook gagal dipasang, polling otomatis tetap berjalan — deposit masih terkonfirmasi, hanya lebih lambat.
+- **Rate limit PixPayz: 2 request/detik.** Semua request (buat/cek invoice) lewat satu rate limiter global dengan jeda 0.6 detik dan retry saat HTTP 429. Jangan menurunkan `PIXPAYZ_MIN_INTERVAL`.
+
+### Lainnya
 - **Produk app**: admin menambah produk & stok; pembelian otomatis mengirim data stok ke user.
 - **Referral**: bonus daftar + komisi deposit; link `t.me/<bot>?start=ref_<id>`.
 - **Misi**: harian, jumlah order, total deposit, jumlah referral — diklaim lewat tombol.
@@ -278,6 +319,11 @@ sqlite3 data/tarakapedia.db ".backup data/backup-$(date +%F).db"
 | Harga user berubah sendiri | Itu penyesuaian margin saat kenaikan modal provider (tidak pernah turun). Kunci lewat tombol **🤖 Auto Harga** di detail layanan. |
 | Foto menu tidak muncul | Pastikan `assets/menu.png` ada, atau upload ulang lewat **📸 Foto Menu**. Bot otomatis fallback ke teks. |
 | Status order tidak berubah | Cek koneksi ke `/status`, pastikan `provider_order_id` tersimpan di order. |
+| `API key PixPayz belum diisi` | Isi `PIXPAYZ_API_KEY` di `.env`, restart bot. |
+| QRIS tidak muncul | Cek koneksi ke `/api/createinvoice`; pastikan `qris_image` tersimpan. Invoice lama bisa ditampilkan ulang lewat **📄 Riwayat Deposit**. |
+| Deposit sudah bayar tapi saldo belum bertambah | Cek webhook di dashboard PixPayz & log `journalctl -u tarakapedia-bot -f`. Tekan **🔄 Cek Status** pada invoice; polling juga berjalan otomatis tiap 20 detik. |
+| `Terlalu banyak request (429)` | PixPayz membatasi 2 req/detik. Biarkan `PIXPAYZ_MIN_INTERVAL=0.6`; bot otomatis retry. |
+| `Maksimal 3 invoice aktif` | Selesaikan atau tunggu invoice lama kedaluwarsa. Admin bisa mengubah batas di **⚙️ Pengaturan → Batas invoice aktif per user**. |
 
 ---
 
@@ -285,7 +331,8 @@ sqlite3 data/tarakapedia.db ".backup data/backup-$(date +%F).db"
 
 - Website masih dalam tahap pengembangan; tombol website di menu bersifat informasi.
 - Semua konfigurasi sensitif hanya ada di `.env`.
-- Kredensial provider, saldo/modal, dan harga modal tidak pernah dikirim ke handler atau tampilan user.
+- Kredensial provider & PixPayz, saldo/modal, dan harga modal tidak pernah dikirim ke handler atau tampilan user.
+- Invoice QRIS sengaja tidak bisa dibatalkan: status akhir hanya `paid`, `expired`, atau konfirmasi manual admin.
 - Penambahan endpoint baru cukup ditambahkan sebagai method di `providers.py` lalu dipanggil dari panel admin.
 - Dibuat dengan arsitektur modular dan clean code agar mudah dikembangkan.
 
