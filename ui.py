@@ -63,7 +63,7 @@ def main_kb(uid: int | None = None):
         [("📦 Pesanan Saya", "myord"), ("🧾 Riwayat", "hist")],
         [("📱 Toko App", "shop"), ("👤 Profil Saya", "prof")],
         [("🎁 Kode Referral", "ref"), ("🎯 Misi Special", "msn")],
-        [("🏆 Top Order", "top")],
+        [("🏆 Top Transaksi", "top")],
         [("📢 Channel Kami", CHANNEL_REGISTRY_URL), ("📜 Log Transaksi", CHANNEL_LOG_URL)],
         [("🌐 Website", WEBSITE_URL), ("💬 Hubungi Admin", ADMIN_CONTACT_URL)],
     ]
@@ -126,18 +126,18 @@ async def show_menu(ev, caption: str, markup=None):
         await ev.answer_photo(FSInputFile(photo), caption=caption[:1000], reply_markup=markup)
 
 
-async def top_order_block(limit: int = 3) -> str:
-    """Papan peringkat top order dengan username yang bisa diklik."""
-    rows = await db.top_orders(limit)
+async def top_spender_block(limit: int = 3) -> str:
+    """Papan peringkat transaksi rupiah dengan username yang bisa diklik."""
+    rows = await db.top_spenders(limit)
     if not rows:
-        return "🏆 <b>TOP ORDER</b>\nBelum ada order. Jadilah yang pertama! 🚀"
+        return "🏆 <b>TOP TRANSAKSI</b>\nBelum ada transaksi. Jadilah yang pertama! 🚀"
     medals = ("🥇", "🥈", "🥉")
     lines = []
     for i, r in enumerate(rows):
         rank = medals[i] if i < len(medals) else f"{i + 1}."
         label = f"@{r['username']}" if r["username"] else (r["name"] or f"ID {r['id']}")
-        lines.append(f"{rank} {user_link(r['id'], label, r['username'])} • <b>{num(r['total_order'])}</b> order")
-    return "🏆 <b>TOP ORDER</b>\n" + "\n".join(lines)
+        lines.append(f"{rank} {user_link(r['id'], label, r['username'])} • <b>{rp(r['total_spent'])}</b>")
+    return "🏆 <b>TOP TRANSAKSI</b>\n" + "\n".join(lines)
 
 
 async def menu_caption(uid: int) -> str:
@@ -148,7 +148,7 @@ async def menu_caption(uid: int) -> str:
          f"┌ 💰 Saldo  : <b>{rp(u['balance'])}</b>\n"
          f"├ 📦 Order  : <b>{num(u['total_order'])}</b> kali\n"
          f"└ 👥 Member : <b>{num(s['users'])}</b> orang\n\n")
-    t += await top_order_block(3) + "\n\n"
+    t += await top_spender_block(3) + "\n\n"
     t += ("⚡ Pesanan diproses otomatis 24/7\n"
           "💸 Deposit QRIS — cek lunas tanpa ribet\n"
           "🎁 Ajak teman, dapat komisi referral\n\n"

@@ -570,10 +570,10 @@ async def claim_mission(uid, mid):
 
 
 # ---------- stats ----------
-async def top_orders(limit: int = 3):
-    """Papan peringkat user berdasarkan total order (tie: total belanja)."""
+async def top_spenders(limit: int = 3):
+    """Papan peringkat user berdasarkan total transaksi rupiah (tie: jumlah order)."""
     return await q("SELECT id, name, username, total_order, total_spent FROM users "
-                   "WHERE total_order>0 ORDER BY total_order DESC, total_spent DESC, id ASC LIMIT ?",
+                   "WHERE total_spent>0 ORDER BY total_spent DESC, total_order DESC, id ASC LIMIT ?",
                    (max(1, min(50, int(limit))),))
 
 
