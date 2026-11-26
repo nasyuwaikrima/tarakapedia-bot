@@ -20,7 +20,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS users(
   id INTEGER PRIMARY KEY, name TEXT, username TEXT,
   balance INTEGER DEFAULT 0, total_order INTEGER DEFAULT 0, total_spent INTEGER DEFAULT 0,
-  banned INTEGER DEFAULT 0, referred_by INTEGER, ref_earned INTEGER DEFAULT 0, joined_at TEXT);
+  banned INTEGER DEFAULT 0, referred_by INTEGER, ref_earned INTEGER DEFAULT 0, joined_at TEXT,
+  channel_status TEXT DEFAULT 'pending', channel_checked_at TEXT, channel_joined_at TEXT);
 CREATE TABLE IF NOT EXISTS categories(
   id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, emoji TEXT DEFAULT '📁');
 CREATE TABLE IF NOT EXISTS services(
@@ -89,12 +90,16 @@ DEPOSIT_COLUMNS = {
     "invoice_id": "TEXT", "qris_image": "TEXT DEFAULT ''",
     "payment_link": "TEXT DEFAULT ''", "expired_at": "TEXT", "paid_at": "TEXT",
 }
+USER_COLUMNS = {
+    "channel_status": "TEXT DEFAULT 'pending'",
+    "channel_checked_at": "TEXT", "channel_joined_at": "TEXT",
+}
 
 
 async def _migrate():
     """Tambah kolom baru ke database lama tanpa menghapus data."""
     for table, columns in (("services", SERVICE_COLUMNS), ("orders", ORDER_COLUMNS),
-                           ("deposits", DEPOSIT_COLUMNS)):
+                           ("deposits", DEPOSIT_COLUMNS), ("users", USER_COLUMNS)):
         have = {r["name"] for r in await q(f"PRAGMA table_info({table})")}
         for col, decl in columns.items():
             if col not in have:
@@ -295,6 +300,23 @@ async def upsert_user(uid, name, username) -> bool:
 
 async def get_user(uid):
     return await q1("SELECT * FROM users WHERE id=?", (uid,))
+
+
+async def set_channel_status(uid, status: str):
+    """Simpan status register channel. Return status lama (panggilnya yang cek perubahannya)."""
+    u = await get_user(uid)
+    if not u:
+        return None
+    old = u["channel_status"] or "pending"
+    if old == status:
+        return old
+    ts = now()
+    if status == "joined":
+        await x("UPDATE users SET channel_status=?, channel_checked_at=?, "
+                "channel_joined_at=COALESCE(channel_joined_at,?) WHERE id=?", (status, ts, ts, uid))
+    else:
+        await x("UPDATE users SET channel_status=?, channel_checked_at=? WHERE id=?", (status, ts, uid))
+    return old
 
 
 async def add_balance(uid, amt, type_, note=""):

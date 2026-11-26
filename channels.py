@@ -2,12 +2,14 @@
 
 import logging
 import time
+from datetime import datetime
 
 from aiogram import BaseMiddleware, Bot
 from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import ChatMemberUpdated
 
+import db
 import ui
 from config import (ADMIN_IDS, CHANNEL_LOG, CHANNEL_LOG_URL, CHANNEL_REGISTRY,
                     CHANNEL_REGISTRY_URL)
@@ -41,8 +43,27 @@ def _warn_once(chat: str, err: Exception):
         log.warning("Tidak bisa cek member di %s: %s. Pastikan bot jadi admin channel.", chat, err)
 
 
+def _fresh(ts: str | None, max_age: int = 86400) -> bool:
+    """Status join terakhir masih dipercaya selama 24 jam kalau API channel error."""
+    if not ts:
+        return False
+    try:
+        checked = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S").replace(tzinfo=db.WIB)
+        return (datetime.now(db.WIB) - checked).total_seconds() < max_age
+    except (TypeError, ValueError):
+        return False
+
+
+async def _fallback_if_unreadable(uid: int, label, chat, url, status="tidak bisa dicek"):
+    """API error: percaya status joined yang masih fresh, selain itu tetap gate."""
+    u = await db.get_user(uid)
+    if u and u["channel_status"] == "joined" and _fresh(u["channel_checked_at"]):
+        return None
+    return (label, chat, url, status)
+
+
 async def missing_channels(bot: Bot, uid: int) -> list[tuple[str, str, str, str]]:
-    """Return channel yang belum dijoin user. Error config bot → fail-open (biar bot tetap jalan)."""
+    """Return channel yang belum terverifikasi. Error API → pakai status register terakhir."""
     missing = []
     for label, chat, url in CHANNELS:
         if not chat:
@@ -59,8 +80,14 @@ async def missing_channels(bot: Bot, uid: int) -> list[tuple[str, str, str, str]
                 missing.append((label, chat, url, "tidak ditemukan"))
             else:
                 _warn_once(chat, e)
+                fallback = await _fallback_if_unreadable(uid, label, chat, url)
+                if fallback:
+                    missing.append(fallback)
         except Exception as e:
             _warn_once(chat, e)
+            fallback = await _fallback_if_unreadable(uid, label, chat, url)
+            if fallback:
+                missing.append(fallback)
     return missing
 
 
@@ -91,7 +118,18 @@ async def gate(ev, bot: Bot | None = None, state=None) -> bool:
     uid = getattr(getattr(ev, "from_user", None), "id", None)
     if uid is None or uid in ADMIN_IDS:
         return False
-    missing = await missing_channels(bot or ev.bot, uid)
+    bot = bot or ev.bot
+    missing = await missing_channels(bot, uid)
+    old = await db.set_channel_status(uid, "out" if missing else "joined")
+    if old != ("out" if missing else "joined"):
+        u = await db.get_user(uid)
+        who = ui.user_link(uid, u["name"] if u else None, u["username"] if u else None)
+        if missing:
+            await ui.log_channel(bot, f"⚠️ <b>REGISTER CHANNEL</b>\n👤 {who}\n"
+                                      f"Keluar/belum join: {ui.esc(', '.join(x[1] for x in missing))}")
+        elif old is not None:
+            await ui.log_channel(bot, f"✅ <b>REGISTER TERVERIFIKASI</b>\n👤 {who}\n"
+                                      f"Sudah gabung di 2 channel")
     if not missing:
         return False
     await ui.show(ev, join_caption(missing), join_markup(missing))

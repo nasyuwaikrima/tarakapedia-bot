@@ -585,6 +585,7 @@ async def history(c: CallbackQuery):
 async def profile(c: CallbackQuery):
     u = await db.get_user(c.from_user.id)
     refs = await db.referral_count(u["id"])
+    st = {"joined": "✅ Terverifikasi", "out": "❌ Perlu gabung lagi"}.get(u["channel_status"], "⏳ Belum dicek")
     await show(c, f"{LINE}\n👤 <b>PROFIL SAYA</b>\n{LINE}\n\n"
                   f"🙋 Nama : <b>{esc(u['name'] or '-')}</b>\n"
                   f"🆔 ID : <code>{u['id']}</code>\n"
@@ -592,6 +593,7 @@ async def profile(c: CallbackQuery):
                   f"📦 Total Order : <b>{ui.num(u['total_order'])}</b>\n"
                   f"💳 Total Belanja : <b>{rp(u['total_spent'])}</b>\n"
                   f"🎁 Referral : <b>{refs}</b> teman • {rp(u['ref_earned'])}\n"
+                  f"🔒 Register channel : <b>{st}</b>\n"
                   f"📅 Bergabung : {esc(u['joined_at'])} WIB",
                kb([("💰 Deposit", "dep"), ("🧾 Riwayat", "hist")], BACK))
 

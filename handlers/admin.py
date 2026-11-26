@@ -272,11 +272,12 @@ async def user_card(uid: int):
     if not u:
         return None, None
     refs = await db.referral_count(uid)
+    ch = {"joined": "✅ Join 2 channel", "out": "❌ Perlu gabung lagi"}.get(u["channel_status"], "⏳ Belum dicek")
     t = (f"{LINE}\n👤 <b>USER</b> <code>{uid}</code>\n{LINE}\n\n├ Nama : {esc(u['name'] or '-')}\n"
          f"├ Username : {('@' + esc(u['username'])) if u['username'] else '-'}\n├ Saldo : <b>{rp(u['balance'])}</b>\n"
          f"├ Order : {u['total_order']} • belanja {rp(u['total_spent'])}\n├ Referral : {refs} • {rp(u['ref_earned'])}\n"
          f"├ Diundang oleh : {u['referred_by'] or '-'}\n├ Status : {'🚫 BANNED' if u['banned'] else '✅ Aktif'}\n"
-         f"└ Bergabung : {u['joined_at']}")
+         f"├ Channel : {ch}\n└ Bergabung : {u['joined_at']}")
     return t, kb([("➕ Saldo", f"adm:bal:+:{uid}"), ("➖ Saldo", f"adm:bal:-:{uid}")],
                  [("✅ Unban" if u["banned"] else "🚫 Ban", f"adm:ban:{uid}")], PANEL)
 
