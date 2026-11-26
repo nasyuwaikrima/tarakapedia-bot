@@ -36,6 +36,7 @@ Bot SMM panel berbasis Telegram dengan **order real ke API MedanPedia**, katalog
 - ✅ **Harga dikelola admin**: margin global, harga manual per layanan, kunci harga, dan batas bawah harga agar tidak pernah rugi.
 - ✅ **Modal provider disembunyikan** dari semua tampilan user. User hanya melihat harga jual.
 - ✅ Menu utama dikirim sebagai **foto + caption** yang rapi; tombol disusun campuran **baris 2 tombol dan 1 tombol** agar rapi dan tidak melebihi lebar bubble. Fitur lanjutan masuk ke tombol **🧩 Lainnya**. Foto bisa diganti admin lewat panel. Tombol back/menu/invoice **mengedit pesan yang sama**, jadi tidak spam chat.
+- ✅ **Bot Commands Menu** (tombol di pojok kiri bawah Telegram) diisi lewat `set_my_commands`: `/start`, `/layanan`, `/deposit`, `/pesanan`, `/riwayat`, `/profil`, `/referral`, `/toko`, `/misi`, `/top`. Ini bukan inline keyboard/reply keyboard. Admin mendapat tambahan `/admin` & `/users`.
 - ✅ Kategori & layanan diurutkan **termurah → termahal** memakai harga jual efektif (modal + margin tidak pernah bocor).
 - ✅ **Top Transaksi** tampil di menu `/start` (3 teratas: username + total rupiah yang dibelanjakan) dan bisa dibuka sampai 10 teratas lewat satu tombol di home menu. Periode **Semua / Mingguan (7 hari) / Bulanan (30 hari)** dipilih lewat tab di dalam papan peringkat, supaya home menu tidak penuh.
 - ✅ Deposit **QRIS PixPayz real**: invoice dibuat otomatis, QRIS bisa dilihat ulang kapan saja lewat riwayat, status lunas dicek otomatis ke PixPayz tiap 20 detik (**tanpa webhook/domain**), invoice **tidak bisa dibatalkan**.
@@ -211,12 +212,12 @@ Alur order aman:
 
 ## 8. Panduan admin
 
-Ketik `/admin` atau tekan tombol **🛠 Panel Admin** di menu utama.
+Ketik `/admin` atau tekan tombol **🛠 Panel Admin** di menu utama. Untuk melihat semua user langsung, ketik `/users` atau pilih **📋 Daftar User** di panel.
 
 | Menu | Fungsi |
 |---|---|
 | 📊 Statistik | User, order, omzet, deposit, uptime. |
-| 👥 Kelola User | Cari ID/@username, tambah/kurang saldo, ban/unban. |
+| 👥 Kelola User | Cari ID/@username, buka **📋 Daftar User** berhalaman + pencarian, tambah/kurang saldo, ban/unban. |
 | 🛒 Layanan | Lihat & ubah harga, on/off, kunci/buka auto harga, hapus, tambah manual (boleh dengan ID provider). |
 | 📱 Produk App | Produk digital + stok. |
 | 📦 Pesanan | Detail order, ubah status, refund, lihat ID provider & refill. |
@@ -249,6 +250,7 @@ ID Provider dan tipe boleh kosong. Layanan dengan ID provider ikut dipakai untuk
 
 - `/start` → daftar/wajib gabung 2 channel → menu utama (foto + caption).
 - `/menu` → tampilkan menu lagi (tetap dicek dulu status channel-nya).
+- `/layanan`, `/deposit`, `/pesanan`, `/riwayat`, `/profil`, `/referral`, `/toko`, `/misi`, `/top` → pintasan langsung ke halaman masing-masing (tetap lewat gate 2 channel).
 - Kalau keluar dari salah satu channel, bot langsung mengingatkan; tekan tombol channel lalu **✅ Saya sudah gabung** untuk masuk lagi.
 - 💰 **Deposit Saldo** → invoice aktif langsung tampil dengan QRIS-nya; pilih nominal / nominal custom untuk membuat invoice baru (maks 3 aktif).
 - 🧾 **Riwayat Deposit** → lihat semua transaksi; ketuk salah satu untuk menampilkan QRIS/invoice lama lagi dan cek status.
@@ -257,7 +259,7 @@ ID Provider dan tipe boleh kosong. Layanan dengan ID provider ikut dipakai untuk
 - 🏆 **Top Transaksi** → papan peringkat 3 teratas (periode Semua) tampil langsung di menu `/start`; tombol **🏆 Top Transaksi** membuka papan 10 teratas beserta username dan total rupiah transaksi. Di dalam papan ada tab **Semua / Mingguan / Bulanan** — jadi tidak perlu menambah tombol periode di home menu. Urutan memakai total belanja (`total_spent`), bukan jumlah order. Periode mingguan/bulanan dihitung dari tanggal order, tidak termasuk order dibatalkan.
 - 🧩 **Lainnya** → toko aplikasi, profil, kode referral, misi, website, hubungi admin, dan panel admin (khusus admin). **📢 Channel Kami** & **📜 Log Transaksi** tetap langsung tersedia di menu utama.
 
-Perintah penting: `/start`, `/menu`, `/admin` (khusus admin).
+Perintah penting: `/start`, `/menu`, `/layanan`, `/deposit`, `/pesanan`, `/riwayat`, `/profil`, `/referral`, `/toko`, `/misi`, `/top`; admin: `/admin`, `/users`.
 
 ---
 
