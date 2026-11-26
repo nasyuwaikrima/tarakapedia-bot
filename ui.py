@@ -63,8 +63,7 @@ def main_kb(uid: int | None = None):
         [("📦 Pesanan Saya", "myord"), ("🧾 Riwayat", "hist")],
         [("📱 Toko App", "shop"), ("👤 Profil Saya", "prof")],
         [("🎁 Kode Referral", "ref"), ("🎯 Misi Special", "msn")],
-        [("🏆 Top Transaksi", "top:all"), ("📅 Mingguan", "top:week")],
-        [("🗓 Bulanan", "top:month")],
+        [("🏆 Top Transaksi", "top:all")],
         [("📢 Channel Kami", CHANNEL_REGISTRY_URL), ("📜 Log Transaksi", CHANNEL_LOG_URL)],
         [("🌐 Website", WEBSITE_URL), ("💬 Hubungi Admin", ADMIN_CONTACT_URL)],
     ]
