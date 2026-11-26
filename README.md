@@ -35,7 +35,7 @@ Bot SMM panel berbasis Telegram dengan **order real ke API MedanPedia**, katalog
 - ✅ **Refill** `/refill` dan `/refill_status` bisa diajukan admin maupun user (untuk layanan bergaransi).
 - ✅ **Harga dikelola admin**: margin global, harga manual per layanan, kunci harga, dan batas bawah harga agar tidak pernah rugi.
 - ✅ **Modal provider disembunyikan** dari semua tampilan user. User hanya melihat harga jual.
-- ✅ Menu utama dikirim sebagai **foto + caption** yang rapi; foto bisa diganti admin lewat panel. Tombol back/menu/invoice **mengedit pesan yang sama**, jadi tidak spam chat.
+- ✅ Menu utama dikirim sebagai **foto + caption** yang rapi; tombol dirapikan jadi maksimal **5 baris (3 tombol per baris)** agar foto tetap terlihat di layar. Foto bisa diganti admin lewat panel. Tombol back/menu/invoice **mengedit pesan yang sama**, jadi tidak spam chat.
 - ✅ Kategori & layanan diurutkan **termurah → termahal** memakai harga jual efektif (modal + margin tidak pernah bocor).
 - ✅ **Top Transaksi** tampil di menu `/start` (3 teratas: username + total rupiah yang dibelanjakan) dan bisa dibuka sampai 10 teratas lewat satu tombol di home menu. Periode **Semua / Mingguan (7 hari) / Bulanan (30 hari)** dipilih lewat tab di dalam papan peringkat, supaya home menu tidak penuh.
 - ✅ Deposit **QRIS PixPayz real**: invoice dibuat otomatis, QRIS bisa dilihat ulang kapan saja lewat riwayat, status lunas dicek otomatis ke PixPayz tiap 20 detik (**tanpa webhook/domain**), invoice **tidak bisa dibatalkan**.
