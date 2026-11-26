@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery, ChatMemberUpdated, Message
 
 import channels
 import db
+import limits
 import ui
 from config import BOT_NAME, MAX_ACTIVE_DEPOSITS
 from payments import gateway
@@ -249,6 +250,9 @@ async def dep_cancel_stub(c: CallbackQuery):
     await answer_cb(c, "Invoice QRIS tidak bisa dibatalkan.", True)
 
 # ---------- order layanan (provider real) ----------
+KUOTA_PENUH = ("⚠️ Maaf, kuota order layanan ini sedang penuh. "
+               "Coba jumlah lebih kecil atau coba lagi nanti ya, kak.")
+
 TYPE_LABELS = {
     "default": "Default", "package": "Paket", "custom_comment": "Komentar Custom",
     "comment_likes": "Like Komentar", "mention_list": "Mention List",
@@ -288,7 +292,7 @@ async def _konfirmasi(ev, state: FSMContext, s, d: dict):
     cukup = "✅ cukup" if u["balance"] >= price else "⚠️ belum cukup, deposit dulu ya"
     t = (f"{LINE}\n🧾 <b>KONFIRMASI PESANAN</b>\n{LINE}\n\n"
          f"🏷 Layanan : <b>{esc(s['name'])}</b>\n"
-         f"⚙️ Tipe : {TYPE_LABELS.get(s['provider_type'], s['provider_type'])}\n"
+         f"📋 Format : {TYPE_LABELS.get(s['provider_type'], s['provider_type'])}\n"
          f"🔗 Target : <code>{esc(d['link'])}</code>\n")
     if d.get("qty"):
         t += f"🔢 Jumlah : <b>{ui.num(d['qty'])}</b>\n"
@@ -326,8 +330,7 @@ async def ord_cats(c: CallbackQuery, state: FSMContext):
     cats = [x for x in await db.q("SELECT * FROM categories") if x["id"] in termurah]
     cats.sort(key=lambda x: (termurah[x["id"]], x["name"].lower()))
     if not cats:
-        return await show(c, "Belum ada layanan tersedia. Admin bisa sinkron lewat Panel Admin → Provider API.",
-                          kb(BACK))
+        return await show(c, "Belum ada layanan tersedia. Hubungi admin ya, kak.", kb(BACK))
     rows = [[(f"{x['emoji']} {x['name'][:15]} • {rp(termurah[x['id']])}", f"ord:c:{x['id']}:0")
              for x in cats[i:i + 2]] for i in range(0, len(cats), 2)]
     rows.append(BACK)
@@ -368,7 +371,7 @@ async def ord_service(c: CallbackQuery):
         return await answer_cb(c, "Layanan tidak tersedia.", True)
     estimasi = str(s["provider_avg"] or "").strip()[:90] or "Proses cepat, otomatis"
     await show(c, f"{LINE}\n📌 <b>{esc(s['name'])}</b>\n{LINE}\n\n"
-                  f"⚙️ Tipe : {TYPE_LABELS.get(s['provider_type'], s['provider_type'])}\n"
+                  f"📋 Format : {TYPE_LABELS.get(s['provider_type'], s['provider_type'])}\n"
                   f"💸 Harga : <b>{rp(await db.effective_price(s))}</b> / 1.000\n"
                   f"🔢 Min/Max : {ui.num(s['min_qty'])} / {ui.num(s['max_qty'])}\n"
                   f"🛡 Garansi : {'✅ Ada refill' if s['provider_refill'] else '❌ Tanpa refill'}\n"
@@ -409,6 +412,8 @@ async def ord_qty(m: Message, state: FSMContext):
     digits = re.sub(r"\D", "", m.text or "")
     if not digits or not (s["min_qty"] <= int(digits) <= s["max_qty"]):
         return await m.answer(f"⚠️ Jumlah harus {ui.num(s['min_qty'])} — {ui.num(s['max_qty'])}.")
+    if not await limits.can_cover(s, int(digits)):
+        return await m.answer(KUOTA_PENUH)
     d["qty"] = int(digits)
     await state.update_data(qty=d["qty"])
     await _lanjut(m, state, s, d)
@@ -439,10 +444,13 @@ async def ord_ok(c: CallbackQuery, state: FSMContext):
         return await _menu(c, state)
     if not s["provider_id"]:
         await state.clear()
-        return await show(c, "⚠️ Layanan ini belum terhubung ke provider. Hubungi admin.", kb(BACK))
+        return await show(c, "⚠️ Layanan ini belum tersedia. Hubungi admin ya, kak.", kb(BACK))
     extra = d.get("extra") or {}
     qty = d.get("qty")
     price = await _harga(d, s)
+    if not await limits.can_cover(s, await _billable(d, s)):
+        await state.clear()
+        return await show(c, KUOTA_PENUH, kb(BACK))
     oid = await db.create_order(c.from_user.id, s, d["link"], qty or 0, price, extra)
     if oid is None:
         await state.clear()
@@ -452,22 +460,21 @@ async def ord_ok(c: CallbackQuery, state: FSMContext):
     try:
         pid = await provider.order(int(s["provider_id"]), d["link"], quantity=qty,
                                    ptype=s["provider_type"], **extra)
-    except Exception as e:
+    except Exception:
         await db.cancel_order(oid)
         await ui.log_channel(c.bot, f"↩️ <b>REFUND ORDER</b> #{oid}\n"
-                                    f"👤 {ui.user_link(c.from_user.id)}\n💸 {rp(price)} dikembalikan • provider gagal")
-        return await show(c, f"⚠️ Provider gagal: {esc(str(e)[:150])}.\nSaldo Anda dikembalikan.", kb(BACK))
+                                    f"👤 {ui.user_link(c.from_user.id)}\n💸 {rp(price)} dikembalikan • gagal diproses")
+        return await show(c, "⚠️ Pesanan belum bisa diproses. Saldo Anda dikembalikan, ya kak.", kb(BACK))
     await db.x("UPDATE orders SET provider_order_id=? WHERE id=?", (pid, oid))
     u = await db.get_user(c.from_user.id)
     await show(c, f"✅ <b>Pesanan Berhasil Dibuat!</b>\n\n├ Order ID : <code>#{oid}</code>\n"
-                  f"├ ID Provider : <code>{esc(pid)}</code>\n"
                   f"├ Layanan : {esc(s['name'])}\n├ Harga : {rp(price)}\n"
                   f"└ Sisa Saldo : <b>{rp(u['balance'])}</b>", kb([("📦 Pesanan Saya", "myord")], BACK))
     await ui.notify_admins(c.bot, f"🛒 Order baru <code>#{oid}</code> dari <code>{c.from_user.id}</code>\n"
                                   f"{esc(s['name'])} • {rp(price)} • provider <code>{esc(pid)}</code>")
     await ui.log_channel(c.bot, f"🛒 <b>ORDER BARU</b> #{oid}\n"
                                 f"👤 {ui.user_link(c.from_user.id, u['name'] if u else None, u['username'] if u else None)}\n"
-                                f"📦 {esc(s['name'])} • 💸 {rp(price)}\n🔖 Provider: <code>{esc(pid)}</code>")
+                                f"📦 {esc(s['name'])} • 💸 {rp(price)}")
 
 
 # ---------- toko aplikasi ----------
@@ -532,10 +539,8 @@ async def my_orders(c: CallbackQuery):
         t += (f"{ui.STATUS_EMOJI.get(o['status'], '•')} <b>#{o['id']}</b> • {esc(o['service_name'])}\n"
               f"   💸 {rp(o['price'])} • 🔢 {ui.num(o['quantity']) or '-'} • "
               f"{ui.STATUS_ID.get(o['status'], o['status'])}\n")
-        if o["provider_order_id"]:
-            t += f"   🔖 Provider : <code>{esc(o['provider_order_id'])}</code>\n"
         if o["refill_id"]:
-            t += f"   🔁 Refill : <code>{esc(o['refill_id'])}</code> • {esc(o['refill_status'] or 'Menunggu')}\n"
+            t += f"   🔁 Refill : <b>{esc(o['refill_status'] or 'Menunggu')}</b>\n"
         t += f"   <i>{esc(o['created_at'])}</i>\n   ──────────\n"
         if o["provider_order_id"] and o["pr"]:
             label = f"📊 Cek Refill #{o['id']}" if o["refill_id"] else f"🔁 Refill #{o['id']}"
@@ -556,14 +561,14 @@ async def ord_refill(c: CallbackQuery):
         if o["refill_id"]:
             st = await provider.refill_status(o["refill_id"])
             await db.x("UPDATE orders SET refill_status=?, checked_at=? WHERE id=?", (st, db.now(), oid))
-            msg = f"📊 Refill <code>{esc(o['refill_id'])}</code>: <b>{esc(st)}</b>"
+            msg = f"📊 Status refill: {st}"
         else:
             rid = await provider.refill(o["provider_order_id"])
             await db.x("UPDATE orders SET refill_id=?, refill_status='Pending', checked_at=? WHERE id=?",
                        (rid, db.now(), oid))
-            msg = f"✅ Refill diajukan • ID <code>{esc(rid)}</code>"
-    except Exception as e:
-        msg = f"⚠️ Gagal: {esc(str(e)[:150])}"
+            msg = "✅ Refill diajukan. Cek statusnya lewat tombol ini, ya."
+    except Exception:
+        msg = "⚠️ Refill belum bisa diproses. Coba lagi nanti, ya."
     await answer_cb(c, msg, True)
     await my_orders(c)
 

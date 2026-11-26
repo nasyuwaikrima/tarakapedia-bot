@@ -8,6 +8,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, FSInputFile, Message
 
 import db
+import limits
 import ui
 from config import ADMIN_IDS, CUSTOM_MENU_PHOTO, DB_PATH
 from providers import normalize_type, provider
@@ -152,8 +153,10 @@ async def api_sync(c: CallbackQuery):
 async def api_balance(c: CallbackQuery):
     await show(c, "⏳ Mengambil saldo provider...")
     try:
-        info = await provider.profile()
-        await show(c, await api_text(info["balance"]), api_kb())
+        balance = await limits.get_balance(force=True)
+        if balance is None:
+            raise RuntimeError("Saldo provider belum bisa dibaca")
+        await show(c, await api_text(balance), api_kb())
     except Exception as e:
         await answer_cb(c, f"⚠️ {esc(str(e)[:160])}", True)
 
