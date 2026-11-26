@@ -42,7 +42,7 @@ Bot SMM panel berbasis Telegram dengan **order real ke API MedanPedia**, katalog
 - ✅ **Status register tersimpan** di database & tampil di profil/panel admin; perubahan status ikut dilog ke channel.
 - ✅ **Semua transaksi tampil di `@tarakapedia_log`**: deposit, order, refund, pembelian, misi, komisi referral, dan order selesai — biar calon user ikut tertarik.
 - ✅ Toko produk + stok, referral, misi, broadcast, backup DB, statistik.
-- ✅ **Referral aman**: komisi dibayar sekali saat order **selesai**, dihitung dari margin order (default 20%, dipatok maks 50%), bukan dari deposit — bot tetap untung, user tetap dapat hadiah.
+- ✅ **Referral aman**: komisi dibayar sekali saat order **selesai**, dihitung dari margin order (default 20%, dipatok maks 50%), bukan dari deposit, dan hanya berlaku **7 hari sejak teman daftar** — bot tetap untung, user tetap dapat hadiah.
 - ✅ Migrasi database otomatis: database lama tetap aman saat di-upgrade.
 - ✅ Kode terpisah per lapisan (config, db, providers, ui, handlers) agar mudah dirawat.
 
@@ -219,7 +219,7 @@ Ketik `/admin` atau tekan tombol **🛠 Panel Admin** di menu utama.
 | 📦 Pesanan | Detail order, ubah status, refund, lihat ID provider & refill. |
 | 💳 Deposit | Lihat invoice QRIS pending; konfirmasi manual hanya jika pengecekan otomatis delay. Tidak ada tombol batal/tolak. |
 | 🎯 Misi | Tambah/on-off/hapus misi. |
-| ⚙️ Pengaturan | Maintenance, komisi referral, bonus daftar, min deposit, batas invoice aktif, pengumuman. |
+| ⚙️ Pengaturan | Maintenance, komisi referral, masa komisi (hari), bonus daftar, min deposit, batas invoice aktif, pengumuman. |
 | 🌐 Provider API | Sync layanan, cek modal, atur margin, filter favorit, auto sync, refill & cek refill. |
 | 📸 Foto Menu | Upload foto menu baru atau kembalikan ke foto bawaan. |
 | 📢 Broadcast | Kirim pesan ke semua user. |
@@ -309,7 +309,7 @@ Bot **tidak menyediakan server webhook**. Seluruh konfirmasi deposit berasal dar
 
 ### Lainnya
 - **Produk app**: admin menambah produk & stok; pembelian otomatis mengirim data stok ke user.
-- **Referral**: link `t.me/<bot>?start=ref_<id>`. Bonus daftar default **Rp 0** (nonaktif; bisa diatur admin). Komisi dibayar **setelah order downline statusnya Selesai** (lewat worker provider atau admin), besarnya `margin order × ref_percent` dengan `ref_percent` default **20%** dan dipatok maksimal **50% margin** supaya bot tidak rugi. Deposit tidak memberi komisi; kalau order dibatalkan/di-refund, komisi yang sudah dibayar ikut ditarik. Modal provider disimpan di order saat dibuat dan tidak pernah ditampilkan ke user.
+- **Referral**: link `t.me/<bot>?start=ref_<id>`. Bonus daftar default **Rp 0** (nonaktif; bisa diatur admin). Komisi dibayar **setelah order downline statusnya Selesai** (lewat worker provider atau admin), besarnya `margin order × ref_percent` dengan `ref_percent` default **20%** dan dipatok maksimal **50% margin** supaya bot tidak rugi. **Masa komisi default 7 hari** sejak teman mendaftar lewat link (`ref_days`, 0 = tanpa batas); yang dihitung adalah **tanggal order dibuat**, jadi order dalam masa berlaku tetap dapat komisi walau selesai setelahnya. Data lama yang belum punya `referred_at` memakai tanggal join sebagai awal masa komisi. Deposit tidak memberi komisi; kalau order dibatalkan/di-refund, komisi yang sudah dibayar ikut ditarik. Modal provider disimpan di order saat dibuat dan tidak pernah ditampilkan ke user.
 - **Misi**: harian, jumlah order, total deposit, jumlah referral — diklaim lewat tombol.
 
 ---
