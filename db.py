@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS orders(
   refill_id TEXT, refill_status TEXT, checked_at TEXT);
 CREATE TABLE IF NOT EXISTS deposits(
   id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, amount INTEGER, method TEXT,
-  ref TEXT, status TEXT DEFAULT 'pending', created_at TEXT);
+  ref TEXT, status TEXT DEFAULT 'pending', created_at TEXT,
+  invoice_id TEXT, qris_image TEXT DEFAULT '', payment_link TEXT DEFAULT '',
+  expired_at TEXT, paid_at TEXT);
 CREATE TABLE IF NOT EXISTS products(
   id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER, description TEXT DEFAULT '', active INTEGER DEFAULT 1);
 CREATE TABLE IF NOT EXISTS product_stock(
@@ -68,6 +70,7 @@ DEFAULT_SETTINGS = {
     "markup_flat": "0",       # margin tetap (Rp) per 1000
     "auto_sync": "1",         # tarik layanan otomatis saat bot start
     "service_fav": "0",       # hanya ambil layanan favorit provider
+    "max_active_deposit": "3",  # batas invoice aktif per user
 }
 
 SERVICE_COLUMNS = {
@@ -82,11 +85,16 @@ ORDER_COLUMNS = {
     "extra": "TEXT DEFAULT ''", "refill_id": "TEXT", "refill_status": "TEXT",
     "checked_at": "TEXT",
 }
+DEPOSIT_COLUMNS = {
+    "invoice_id": "TEXT", "qris_image": "TEXT DEFAULT ''",
+    "payment_link": "TEXT DEFAULT ''", "expired_at": "TEXT", "paid_at": "TEXT",
+}
 
 
 async def _migrate():
     """Tambah kolom baru ke database lama tanpa menghapus data."""
-    for table, columns in (("services", SERVICE_COLUMNS), ("orders", ORDER_COLUMNS)):
+    for table, columns in (("services", SERVICE_COLUMNS), ("orders", ORDER_COLUMNS),
+                           ("deposits", DEPOSIT_COLUMNS)):
         have = {r["name"] for r in await q(f"PRAGMA table_info({table})")}
         for col, decl in columns.items():
             if col not in have:
@@ -305,15 +313,24 @@ async def referral_count(uid) -> int:
 
 
 # ---------- deposits ----------
-async def create_deposit(uid, amount, method, ref="") -> int:
-    c = await x("INSERT INTO deposits(user_id,amount,method,ref,created_at) VALUES(?,?,?,?,?)",
-                (uid, amount, method, ref, now()))
+async def active_deposits(uid):
+    """Invoice yang masih bisa dibayar (belum lunas/expired)."""
+    return await q("SELECT * FROM deposits WHERE user_id=? AND status='pending' ORDER BY id DESC", (uid,))
+
+
+async def create_deposit(uid, amount, method, ref="", info=None) -> int:
+    info = info or {}
+    c = await x("INSERT INTO deposits(user_id,amount,method,ref,created_at,invoice_id,qris_image,"
+                "payment_link,expired_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                (uid, amount, method, ref, now(), info.get("invoice_id") or ref,
+                 info.get("qris_image", ""), info.get("payment_link", ""), info.get("expired_at")))
     return c.lastrowid
 
 
 async def confirm_deposit(dep_id):
-    """Return (deposit_row, referrer_id, bonus) or None jika sudah diproses."""
-    c = await x("UPDATE deposits SET status='success' WHERE id=? AND status='pending'", (dep_id,))
+    """Return (deposit_row, referrer_id, bonus) atau None jika sudah diproses."""
+    c = await x("UPDATE deposits SET status='success', paid_at=? WHERE id=? AND status='pending'",
+                (now(), dep_id))
     if c.rowcount == 0:
         return None
     d = await q1("SELECT * FROM deposits WHERE id=?", (dep_id,))
@@ -328,6 +345,29 @@ async def confirm_deposit(dep_id):
             await add_balance(ref, bonus, "referral", f"Komisi deposit {u['id']}")
             await x("UPDATE users SET ref_earned=ref_earned+? WHERE id=?", (bonus, ref))
     return d, ref, bonus
+
+
+async def confirm_deposit_by_invoice(invoice_id):
+    """Dipanggil webhook / polling saat PixPayz melaporkan status paid."""
+    d = await q1("SELECT * FROM deposits WHERE invoice_id=? OR ref=? ORDER BY id DESC LIMIT 1",
+                 (str(invoice_id), str(invoice_id)))
+    if not d:
+        return None
+    return await confirm_deposit(d["id"])
+
+
+async def expire_deposit_by_invoice(invoice_id) -> bool:
+    d = await q1("SELECT id FROM deposits WHERE invoice_id=? OR ref=? ORDER BY id DESC LIMIT 1",
+                 (str(invoice_id), str(invoice_id)))
+    if not d:
+        return False
+    c = await x("UPDATE deposits SET status='expired' WHERE id=? AND status='pending'", (d["id"],))
+    return c.rowcount > 0
+
+
+async def pending_invoices():
+    return await q("SELECT * FROM deposits WHERE status='pending' AND invoice_id IS NOT NULL "
+                   "AND invoice_id!='' ORDER BY id")
 
 
 # ---------- orders ----------
