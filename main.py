@@ -10,8 +10,11 @@ from aiogram.types import CallbackQuery
 
 import db
 import ui
-from config import ADMIN_IDS, BOT_TOKEN, DB_PATH
+import webhook
+from config import (ADMIN_IDS, BOT_TOKEN, DB_PATH, PIXPAYZ_POLL_SECONDS,
+                    PIXPAYZ_WEBHOOK_PORT)
 from handlers import admin, user
+from payments import gateway
 from providers import provider
 
 log = logging.getLogger("tarakapedia")
@@ -50,11 +53,41 @@ async def sync_catalog() -> int:
     return result["total"]
 
 
+async def poll_invoices(bot: Bot, offset: int = 0) -> int:
+    """Cek invoice QRIS pending sebagai cadangan webhook (maks 20 per siklus)."""
+    rows = await db.q("SELECT * FROM deposits WHERE status='pending' AND invoice_id IS NOT NULL "
+                      "AND invoice_id!='' ORDER BY id")
+    if not rows:
+        return 0
+    for d in rows[offset:offset + 20]:
+        invoice = d["invoice_id"]
+        try:
+            res = await gateway.check(invoice)
+        except Exception:
+            continue  # gagal sementara; siklus berikutnya mencoba lagi
+        if gateway.is_paid(res["status"]):
+            result = await db.confirm_deposit_by_invoice(invoice)
+            if result:
+                await ui.deposit_paid_notice(bot, result)
+        elif gateway.is_expired(res["status"]):
+            await db.expire_deposit_by_invoice(invoice)
+    return (offset + 20) % len(rows)
+
+
 async def worker(bot: Bot):
-    """Sinkronisasi status order & refill dengan provider, plus refresh katalog."""
+    """Sinkronisasi status order, refill, invoice QRIS, dan refresh katalog."""
     last_sync = time.monotonic()
+    last_dep_poll = 0.0
+    poll_offset = 0
     while True:
         try:
+            if gateway.configured and time.monotonic() - last_dep_poll >= PIXPAYZ_POLL_SECONDS:
+                try:
+                    poll_offset = await poll_invoices(bot, poll_offset)
+                except Exception:
+                    log.exception("invoice poll error")
+                last_dep_poll = time.monotonic()
+
             if provider.configured:
                 active = await db.q("SELECT * FROM orders WHERE status IN ('Pending','Processing') "
                                     "AND provider_order_id IS NOT NULL AND provider_order_id!=''")
@@ -116,6 +149,15 @@ async def main():
             log.warning("Gagal sinkron katalog saat start", exc_info=True)
     else:
         log.warning("Kredensial MedanPedia kosong — order real akan ditolak sampai .env diisi")
+    wh_runner = None
+    if gateway.configured:
+        try:
+            wh_runner = await webhook.start(bot)
+        except OSError:
+            log.warning("Port webhook %s dipakai; polling invoice tetap aktif",
+                        PIXPAYZ_WEBHOOK_PORT, exc_info=True)
+    else:
+        log.warning("API key PixPayz kosong — deposit QRIS belum bisa dibuat")
     me = await bot.me()
     log.info("Bot @%s berjalan", me.username)
     task = asyncio.create_task(worker(bot))
@@ -123,6 +165,9 @@ async def main():
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await webhook.stop(wh_runner)
+        await gateway.close()
         await provider.close()
         await db.close()
 
