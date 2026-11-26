@@ -38,6 +38,8 @@ Bot SMM panel berbasis Telegram dengan **order real ke API MedanPedia**, katalog
 - ✅ Kategori & layanan diurutkan **termurah → termahal** memakai harga jual efektif (modal + margin tidak pernah bocor).
 - ✅ Deposit **QRIS PixPayz real**: invoice dibuat otomatis, QRIS bisa dilihat ulang kapan saja lewat riwayat, status lunas dicek otomatis ke PixPayz tiap 20 detik (**tanpa webhook/domain**), invoice **tidak bisa dibatalkan**.
 - ✅ Batas **3 invoice aktif per user** (bisa diatur admin) — antrean deposit tetap terkendali.
+- ✅ **Wajib gabung 2 channel**: `@tarakapedia` (register) & `@tarakapedia_log` (log). Kalau keluar, bot menyuruh gabung lagi.
+- ✅ **Semua transaksi tampil di `@tarakapedia_log`**: deposit, order, refund, pembelian, misi, komisi referral, dan order selesai — biar calon user ikut tertarik.
 - ✅ Toko produk + stok, referral, misi, broadcast, backup DB, statistik.
 - ✅ Migrasi database otomatis: database lama tetap aman saat di-upgrade.
 - ✅ Kode terpisah per lapisan (config, db, providers, ui, handlers) agar mudah dirawat.
@@ -56,6 +58,7 @@ Bot SMM panel berbasis Telegram dengan **order real ke API MedanPedia**, katalog
 | `handlers/admin.py` | Panel admin: provider API, margin, layanan, user, order, deposit, foto menu, dll. |
 | `main.py` | Entry point, middleware keamanan, worker sinkronisasi status order, invoice QRIS & katalog. |
 | `payments.py` | Gateway QRIS PixPayz: profil, buat invoice, cek invoice, rate limiter 2 req/detik. |
+| `channels.py` | Gate wajib join 2 channel, tombol gabung/cek ulang, dan pengingat saat user keluar channel. |
 | `assets/menu.png` | Foto menu bawaan (bisa diganti dari panel admin). |
 | `data/tarakapedia.db` | Database SQLite (tidak ikut di-commit). |
 | `tarakapedia-bot.service` | Unit systemd untuk jalan 24/7. |
@@ -75,11 +78,13 @@ python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 
 cp .env.example .env
-nano .env                      # isi token bot, ADMIN_IDS, dan kredensial provider
+nano .env                      # isi token bot, ADMIN_IDS, channel, dan kredensial provider
 ./venv/bin/python main.py      # uji coba; tekan Ctrl+C setelah berhasil
 ```
 
 Bot aktif ketika log menampilkan `Bot @username berjalan`.
+
+**Sebelum dipakai user:** undang bot sebagai **admin** di `@tarakapedia` dan `@tarakapedia_log`. Tanpa itu, bot tidak bisa membaca status join dan tidak bisa mengirim log transaksi ke channel.
 
 ### Upgrade dari versi lama
 ```bash
@@ -103,6 +108,10 @@ WEBSITE_URL=https://tarakapedia.com
 ADMIN_CONTACT_URL=https://t.me/username_admin
 DB_PATH=data/tarakapedia.db
 
+# Wajib join (bot sebaiknya jadi admin di kedua channel):
+CHANNEL_REGISTRY=@tarakapedia
+CHANNEL_LOG=@tarakapedia_log
+
 # Wajib untuk order real:
 MEDANPEDIA_API_ID=11
 MEDANPEDIA_API_KEY=api_key_asli_dari_panel_medanpedia
@@ -118,7 +127,8 @@ PIXPAYZ_POLL_SECONDS=20
 MAX_ACTIVE_DEPOSITS=3
 ```
 
-- `ADMIN_IDS` dipisah koma. Hanya ID ini yang bisa membuka `/admin`.
+- `ADMIN_IDS` dipisah koma. Hanya ID ini yang bisa membuka `/admin` (admin dibebaskan dari gate channel).
+- `CHANNEL_REGISTRY` & `CHANNEL_LOG` = channel wajib. Tambahkan bot sebagai **admin** di keduanya supaya status keanggotaan terbaca dan log transaksi bisa dikirim.
 - `MEDANPEDIA_API_ID` dan `MEDANPEDIA_API_KEY` **wajib** diisi; jika kosong, order ditolak dan saldo user dikembalikan otomatis (tidak ada order demo).
 - `PIXPAYZ_API_KEY` **wajib** diisi untuk deposit QRIS; API key hanya dibaca dari `.env`, tidak pernah ditaruh di kode.
 - `PIXPAYZ_MIN_INTERVAL=0.6` menjaga request tidak melewati batas **2 request/detik** PixPayz. Jangan dikurangi.
@@ -232,8 +242,9 @@ ID Provider dan tipe boleh kosong. Layanan dengan ID provider ikut dipakai untuk
 
 ## 9. Panduan user
 
-- `/start` → menu utama (foto + caption).
-- `/menu` → tampilkan menu lagi.
+- `/start` → daftar/wajib gabung 2 channel → menu utama (foto + caption).
+- `/menu` → tampilkan menu lagi (tetap dicek dulu status channel-nya).
+- Kalau keluar dari salah satu channel, bot langsung mengingatkan; tekan tombol channel lalu **✅ Saya sudah gabung** untuk masuk lagi.
 - 💰 **Deposit Saldo** → invoice aktif langsung tampil dengan QRIS-nya; pilih nominal / nominal custom untuk membuat invoice baru (maks 3 aktif).
 - 🧾 **Riwayat Deposit** → lihat semua transaksi; ketuk salah satu untuk menampilkan QRIS/invoice lama lagi dan cek status.
 - 🛒 **Order Termurah** → kategori & layanan diurutkan termurah dulu → target → jumlah (jika perlu) → field tambahan (jika perlu) → konfirmasi.
@@ -287,6 +298,11 @@ Bot **tidak menyediakan server webhook**. Seluruh konfirmasi deposit berasal dar
 - **Rate limit PixPayz: 2 request/detik.** Semua request (buat/cek invoice) lewat satu rate limiter global dengan jeda 0.6 detik dan retry saat HTTP 429. Jangan menurunkan `PIXPAYZ_MIN_INTERVAL`.
 - Deteksi pembayaran maksimal ~20 detik setelah status `paid` di PixPayz (atau langsung saat tombol 🔄 Cek Status ditekan).
 
+### Channel register & log transaksi
+- `@tarakapedia` = **channel register**. User wajib gabung sebelum bisa deposit/order. Kalau keluar, bot meminta gabung lagi lewat tombol khusus.
+- `@tarakapedia_log` = **channel log**. Semua transaksi tampil di sini: invoice baru, deposit lunas, order baru/selesai, refund, pembelian app, klaim misi, komisi referral, dan penyesuaian saldo admin.
+- Mention user di log bisa diklik, jadi user lain gampang lihat aktivitas. Pengiriman log dibuat **best-effort**: kalau channel log error, transaksi user tetap berhasil.
+
 ### Lainnya
 - **Produk app**: admin menambah produk & stok; pembelian otomatis mengirim data stok ke user.
 - **Referral**: bonus daftar + komisi deposit; link `t.me/<bot>?start=ref_<id>`.
@@ -310,6 +326,8 @@ sqlite3 data/tarakapedia.db ".backup data/backup-$(date +%F).db"
 
 | Gejala | Penyebab & solusi |
 |---|---|
+| User disuruh gabung terus padahal sudah join | Bot belum jadi admin di channel. Tambahkan bot sebagai admin di `@tarakapedia` & `@tarakapedia_log`, lalu restart. |
+| Log transaksi tidak muncul | Bot belum admin di `@tarakapedia_log` atau channel salah. Cek `CHANNEL_LOG` di `.env` dan `journalctl -u tarakapedia-bot -f`. |
 | `Kredensial MedanPedia belum diisi` | Isi `MEDANPEDIA_API_ID` & `MEDANPEDIA_API_KEY` di `.env`, restart bot. |
 | `Belum ada layanan tersedia` | Buka `/admin → 🌐 Provider API → 🔄 Sync Layanan`. |
 | Order gagal, saldo kembali | Provider error / field belum lengkap. Lihat pesan error di chat; cek log `journalctl -u tarakapedia-bot -f`. |
