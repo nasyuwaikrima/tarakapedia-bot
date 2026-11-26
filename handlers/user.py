@@ -71,6 +71,15 @@ async def menu_cb(c: CallbackQuery, state: FSMContext):
     await _menu(c, state)
 
 
+@router.callback_query(F.data == "top")
+async def top_orders_cb(c: CallbackQuery):
+    block = await ui.top_order_block(10)
+    if not block:
+        return await show(c, f"{LINE}\n🏆 <b>TOP ORDER</b>\n{LINE}\n\n"
+                             "Belum ada order. Jadilah yang pertama ya, kak!", kb(BACK))
+    await show(c, f"{LINE}\n{block}\n\nUrutan dari total order terbanyak.", kb(BACK))
+
+
 @router.callback_query(F.data == "gate:check")
 async def gate_check(c: CallbackQuery, state: FSMContext):
     if await channels.gate(c, c.bot, state):

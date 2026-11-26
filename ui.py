@@ -63,6 +63,7 @@ def main_kb(uid: int | None = None):
         [("📦 Pesanan Saya", "myord"), ("🧾 Riwayat", "hist")],
         [("📱 Toko App", "shop"), ("👤 Profil Saya", "prof")],
         [("🎁 Kode Referral", "ref"), ("🎯 Misi Special", "msn")],
+        [("🏆 Top Order", "top")],
         [("📢 Channel Kami", CHANNEL_REGISTRY_URL), ("📜 Log Transaksi", CHANNEL_LOG_URL)],
         [("🌐 Website", WEBSITE_URL), ("💬 Hubungi Admin", ADMIN_CONTACT_URL)],
     ]
@@ -125,6 +126,20 @@ async def show_menu(ev, caption: str, markup=None):
         await ev.answer_photo(FSInputFile(photo), caption=caption[:1000], reply_markup=markup)
 
 
+async def top_order_block(limit: int = 3) -> str:
+    """Papan peringkat top order dengan username yang bisa diklik."""
+    rows = await db.top_orders(limit)
+    if not rows:
+        return ""
+    medals = ("🥇", "🥈", "🥉")
+    lines = []
+    for i, r in enumerate(rows):
+        rank = medals[i] if i < len(medals) else f"{i + 1}."
+        label = f"@{r['username']}" if r["username"] else (r["name"] or f"ID {r['id']}")
+        lines.append(f"{rank} {user_link(r['id'], label, r['username'])} • <b>{num(r['total_order'])}</b> order")
+    return "🏆 <b>TOP ORDER</b>\n" + "\n".join(lines)
+
+
 async def menu_caption(uid: int) -> str:
     u = await db.get_user(uid)
     s = await db.global_stats()
@@ -132,11 +147,14 @@ async def menu_caption(uid: int) -> str:
          f"Hai kak {esc(u['name'] or 'kaw')} 👋 selamat datang kembali!\n\n"
          f"┌ 💰 Saldo  : <b>{rp(u['balance'])}</b>\n"
          f"├ 📦 Order  : <b>{num(u['total_order'])}</b> kali\n"
-         f"└ 👥 Member : <b>{num(s['users'])}</b> orang\n\n"
-         f"⚡ Pesanan diproses otomatis 24/7\n"
-         f"💸 Deposit QRIS — cek lunas tanpa ribet\n"
-         f"🎁 Ajak teman, dapat komisi seumur hidup\n\n"
-         f"Silakan pilih menu di bawah ya, kak 👇")
+         f"└ 👥 Member : <b>{num(s['users'])}</b> orang\n\n")
+    top = await top_order_block(3)
+    if top:
+        t += top + "\n\n"
+    t += ("⚡ Pesanan diproses otomatis 24/7\n"
+          "💸 Deposit QRIS — cek lunas tanpa ribet\n"
+          "🎁 Ajak teman, dapat komisi referral\n\n"
+          "Silakan pilih menu di bawah ya, kak 👇")
     ann = await db.setting("announcement")
     if ann:
         t += f"\n\n📢 <b>Info:</b> {esc(ann[:140])}"

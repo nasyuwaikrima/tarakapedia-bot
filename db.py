@@ -570,6 +570,13 @@ async def claim_mission(uid, mid):
 
 
 # ---------- stats ----------
+async def top_orders(limit: int = 3):
+    """Papan peringkat user berdasarkan total order (tie: total belanja)."""
+    return await q("SELECT id, name, username, total_order, total_spent FROM users "
+                   "WHERE total_order>0 ORDER BY total_order DESC, total_spent DESC, id ASC LIMIT ?",
+                   (max(1, min(50, int(limit))),))
+
+
 async def global_stats():
     g = lambda r: r[0] if r and r[0] else 0
     users = g(await q1("SELECT COUNT(*) FROM users"))
