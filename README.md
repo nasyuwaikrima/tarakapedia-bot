@@ -259,7 +259,7 @@ ID Provider dan tipe boleh kosong. Layanan dengan ID provider ikut dipakai untuk
 - 🏆 **Top Transaksi** → papan peringkat 3 teratas (periode Semua) tampil langsung di menu `/start`; tombol **🏆 Top Transaksi** membuka papan 10 teratas beserta username dan total rupiah transaksi. Di dalam papan ada tab **Semua / Mingguan / Bulanan** — jadi tidak perlu menambah tombol periode di home menu. Urutan memakai total belanja (`total_spent`), bukan jumlah order. Periode mingguan/bulanan dihitung dari tanggal order, tidak termasuk order dibatalkan.
 - 🧩 **Lainnya** → toko aplikasi, profil, kode referral, misi, website, hubungi admin, dan panel admin (khusus admin). **📢 Channel Kami** & **📜 Log Transaksi** tetap langsung tersedia di menu utama.
 
-Perintah penting: `/start`, `/menu`, `/layanan`, `/deposit`, `/pesanan`, `/riwayat`, `/profil`, `/referral`, `/toko`, `/misi`, `/top`; admin: `/admin`, `/users`.
+Perintah penting: `/start`, `/menu`, `/layanan`, `/deposit`, `/pesanan`, `/riwayat`, `/profil`, `/referral`, `/toko`, `/misi`, `/top`; admin: `/admin`, `/users`. User biasa tidak melihat tombol/command admin; kalau mengetik `/admin` atau `/users`, bot menjawab bahwa perintah itu khusus admin.
 
 ---
 
