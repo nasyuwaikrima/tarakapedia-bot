@@ -42,6 +42,7 @@ Bot SMM panel berbasis Telegram dengan **order real ke API MedanPedia**, katalog
 - ✅ **Status register tersimpan** di database & tampil di profil/panel admin; perubahan status ikut dilog ke channel.
 - ✅ **Semua transaksi tampil di `@tarakapedia_log`**: deposit, order, refund, pembelian, misi, komisi referral, dan order selesai — biar calon user ikut tertarik.
 - ✅ Toko produk + stok, referral, misi, broadcast, backup DB, statistik.
+- ✅ **Referral aman**: komisi dibayar sekali saat order **selesai**, dihitung dari margin order (default 20%, dipatok maks 50%), bukan dari deposit — bot tetap untung, user tetap dapat hadiah.
 - ✅ Migrasi database otomatis: database lama tetap aman saat di-upgrade.
 - ✅ Kode terpisah per lapisan (config, db, providers, ui, handlers) agar mudah dirawat.
 
@@ -191,7 +192,7 @@ Prinsip: **modal provider adalah rahasia admin**, harga jual ditentukan admin.
 harga jual minimum = ceil(modal provider × (100% + margin%) ) + margin flat per 1K
 ```
 
-- Default margin: **35% + Rp 0/1K**. Diubah di Panel Admin → Provider API → **Atur Margin**.
+- Default margin: **25% + Rp 0/1K** (database lama otomatis ikut sekali saat upgrade). Diubah di Panel Admin → Provider API → **Atur Margin**.
 - Saat sinkron katalog, harga jual **hanya naik**, tidak pernah turun otomatis — jadi kenaikan harga provider tidak mengurangi pendapatan dan tidak ditampilkan ke user.
 - Jika admin mengubah harga manual ke nilai di bawah batas aman, sistem otomatis memakai batas aman saat tagihan (`db.effective_price()`).
 - Per layanan bisa dikunci (`Auto Harga = OFF`) agar tidak ikut penyesuaian otomatis; batas aman tetap berlaku.
@@ -250,7 +251,7 @@ ID Provider dan tipe boleh kosong. Layanan dengan ID provider ikut dipakai untuk
 - 🧾 **Riwayat Deposit** → lihat semua transaksi; ketuk salah satu untuk menampilkan QRIS/invoice lama lagi dan cek status.
 - 🛒 **Order Termurah** → kategori & layanan diurutkan termurah dulu → target → jumlah (jika perlu) → field tambahan (jika perlu) → konfirmasi.
 - 📦 **Pesanan Saya** → status order, ID provider, refill.
-- Lainnya: toko aplikasi, riwayat, profil, kode referral, misi, website, hubungi admin.
+- Lainnya: toko aplikasi, riwayat, profil, kode referral, misi, **📢 Channel Kami**, **📜 Log Transaksi**, website, hubungi admin.
 
 Perintah penting: `/start`, `/menu`, `/admin` (khusus admin).
 
@@ -308,7 +309,7 @@ Bot **tidak menyediakan server webhook**. Seluruh konfirmasi deposit berasal dar
 
 ### Lainnya
 - **Produk app**: admin menambah produk & stok; pembelian otomatis mengirim data stok ke user.
-- **Referral**: bonus daftar + komisi deposit; link `t.me/<bot>?start=ref_<id>`.
+- **Referral**: link `t.me/<bot>?start=ref_<id>`. Bonus daftar default **Rp 0** (nonaktif; bisa diatur admin). Komisi dibayar **setelah order downline statusnya Selesai** (lewat worker provider atau admin), besarnya `margin order × ref_percent` dengan `ref_percent` default **20%** dan dipatok maksimal **50% margin** supaya bot tidak rugi. Deposit tidak memberi komisi; kalau order dibatalkan/di-refund, komisi yang sudah dibayar ikut ditarik. Modal provider disimpan di order saat dibuat dan tidak pernah ditampilkan ke user.
 - **Misi**: harian, jumlah order, total deposit, jumlah referral — diklaim lewat tombol.
 
 ---
