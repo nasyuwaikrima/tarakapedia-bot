@@ -30,6 +30,7 @@ Bot SMM panel berbasis Telegram dengan **order real ke API MedanPedia**, katalog
 - ✅ Mendukung semua tipe order: default, package, custom comment, mention list, mention hashtag, mention follower, mention media likers, dan tipe lain yang sejenis.
 - ✅ **Sinkron katalog** `/services` → semua layanan disimpan ke SQLite (id provider, tipe, kategori, min/max, garansi refill, estimasi waktu).
 - ✅ **Cek saldo provider** `/profile` khusus admin — dipakai sebagai informasi **modal**, tidak pernah ditampilkan ke user.
+- ✅ **Batas order mengikuti saldo provider**: semua layanan dicek modalnya sebelum diproses (cache 5 menit). Kalau kuota penuh, user hanya dapat pesan generik — angka saldo, modal, ID provider/refill, dan aturan batasnya tetap **khusus admin**.
 - ✅ **Status order otomatis** `/status` tiap 20 detik + notifikasi ke user saat selesai.
 - ✅ **Refill** `/refill` dan `/refill_status` bisa diajukan admin maupun user (untuk layanan bergaransi).
 - ✅ **Harga dikelola admin**: margin global, harga manual per layanan, kunci harga, dan batas bawah harga agar tidak pernah rugi.
@@ -161,12 +162,12 @@ Sesuaikan `WorkingDirectory`, `ExecStart`, dan `User` di file service jika path 
 
 ## 6. API MedanPedia yang dipakai
 
-Semua endpoint memakai **POST** dengan body JSON dan kredensial `api_id` + `api_key`.
+Semua endpoint memakai **POST** dengan body berisi `api_id` + `api_key` (form-urlencoded). Endpoint `/profile` mengembalikan `username`, `full_name`, dan `balance`; hanya `balance` yang dipakai bot untuk batas order.
 
 | Endpoint | Digunakan untuk | Dipanggil dari |
 |---|---|---|
 | `/services` | Ambil seluruh layanan (`service_fav` opsional) | Admin → Sync Layanan, startup & tiap 30 menit |
-| `/profile` | Saldo provider = **modal admin** | Admin → Cek Modal |
+| `/profile` | Saldo provider = **modal admin** | Admin → Cek Modal + pengecekan batas order internal (cache 5 menit) |
 | `/order` | Pasang pesanan sesuai tipe layanan | Alur order user |
 | `/status` | Cek status pesanan aktif | Worker tiap 20 detik |
 | `/refill` | Ajukan refill | User & admin |
@@ -197,6 +198,7 @@ harga jual minimum = ceil(modal provider × (100% + margin%) ) + margin flat per
 - Jika admin mengubah harga manual ke nilai di bawah batas aman, sistem otomatis memakai batas aman saat tagihan (`db.effective_price()`).
 - Per layanan bisa dikunci (`Auto Harga = OFF`) agar tidak ikut penyesuaian otomatis; batas aman tetap berlaku.
 - Detail layanan di admin menampilkan modal provider; tampilan user **hanya** menampilkan harga jual, min/max, garansi, dan deskripsi.
+- Semua info provider — saldo, modal, ID provider, ID refill, dan batas order — tidak muncul di chat/riwayat user maupun channel log publik. Admin tetap melihatnya lewat Panel Admin dan notifikasi admin. Kalau saldo provider gagal dibaca, pengecekan batas memakai data cache terakhir; provider tetap menjadi penolakan terakhir.
 
 Alur order aman:
 1. User pilih layanan → isi target/jumlah/field tambahan → lihat harga → konfirmasi.
