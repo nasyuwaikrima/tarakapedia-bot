@@ -40,13 +40,13 @@ def kb(*rows):
 
 
 def main_kb(uid: int | None = None):
+    """Menu utama: alur deposit → order → cek hasil, semua tombol terkelompok."""
     rows = [
-        [("💰 Deposit Saldo", "dep"), ("🛒 Order Layanan", "ord")],
-        [("📱 Toko Aplikasi", "shop"), ("📦 Pesanan Saya", "myord")],
-        [("🧾 Riwayat", "hist"), ("👤 Profil Saya", "prof")],
+        [("💰 Deposit QRIS", "dep"), ("🛒 Order Termurah", "ord")],
+        [("📦 Pesanan Saya", "myord"), ("🧾 Riwayat", "hist")],
+        [("📱 Toko App", "shop"), ("👤 Profil Saya", "prof")],
         [("🎁 Kode Referral", "ref"), ("🎯 Misi Special", "msn")],
-        [("🛍 Order di Website", WEBSITE_URL)],
-        [("📞 Hubungi Admin", ADMIN_CONTACT_URL)],
+        [("🌐 Website", WEBSITE_URL), ("💬 Hubungi Admin", ADMIN_CONTACT_URL)],
     ]
     if uid in ADMIN_IDS:
         rows.append([("🛠 Panel Admin", "adm")])
@@ -98,14 +98,17 @@ async def menu_caption(uid: int) -> str:
     u = await db.get_user(uid)
     s = await db.global_stats()
     t = (f"{LINE}\n💎 <b>{esc(BOT_NAME.upper())} · SMM PANEL</b>\n{LINE}\n\n"
-         f"Halo kak {esc(u['name'] or 'kaw')} 👋\n"
-         f"💰 Saldo : <b>{rp(u['balance'])}</b>\n"
-         f"📦 Order : <b>{num(u['total_order'])}</b> kali\n"
-         f"👥 Member : <b>{num(s['users'])}</b> orang\n\n"
-         f"Pilih menu di bawah ya — order diproses otomatis 🔥")
+         f"Hai kak {esc(u['name'] or 'kaw')} 👋 selamat datang kembali!\n\n"
+         f"┌ 💰 Saldo  : <b>{rp(u['balance'])}</b>\n"
+         f"├ 📦 Order  : <b>{num(u['total_order'])}</b> kali\n"
+         f"└ 👥 Member : <b>{num(s['users'])}</b> orang\n\n"
+         f"⚡ Pesanan diproses otomatis 24/7\n"
+         f"💸 Deposit QRIS — cek lunas tanpa ribet\n"
+         f"🎁 Ajak teman, dapat komisi seumur hidup\n\n"
+         f"Silakan pilih menu di bawah ya, kak 👇")
     ann = await db.setting("announcement")
     if ann:
-        t += f"\n\n📢 {esc(ann[:180])}"
+        t += f"\n\n📢 <b>Info:</b> {esc(ann[:140])}"
     return t
 
 
