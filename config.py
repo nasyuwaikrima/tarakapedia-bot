@@ -25,8 +25,6 @@ PIXPAYZ_API_KEY = os.getenv("PIXPAYZ_API_KEY", "").strip()
 PIXPAYZ_BASE_URL = os.getenv("PIXPAYZ_BASE_URL", "https://pixpayz.com").rstrip("/")
 PIXPAYZ_TIMEOUT = int(os.getenv("PIXPAYZ_TIMEOUT", "20") or 20)
 PIXPAYZ_MIN_INTERVAL = float(os.getenv("PIXPAYZ_MIN_INTERVAL", "0.6") or 0.6)  # batas 2 req/detik
-PIXPAYZ_WEBHOOK_PORT = int(os.getenv("PIXPAYZ_WEBHOOK_PORT", "8080") or 8080)
-PIXPAYZ_WEBHOOK_PATH = os.getenv("PIXPAYZ_WEBHOOK_PATH", "/webhook/pixpayz")
 PIXPAYZ_POLL_SECONDS = int(os.getenv("PIXPAYZ_POLL_SECONDS", "20") or 20)
 MAX_ACTIVE_DEPOSITS = int(os.getenv("MAX_ACTIVE_DEPOSITS", "3") or 3)
 

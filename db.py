@@ -348,7 +348,7 @@ async def confirm_deposit(dep_id):
 
 
 async def confirm_deposit_by_invoice(invoice_id):
-    """Dipanggil webhook / polling saat PixPayz melaporkan status paid."""
+    """Dipanggil saat PixPayz melaporkan status paid (cek manual/polling)."""
     d = await q1("SELECT * FROM deposits WHERE invoice_id=? OR ref=? ORDER BY id DESC LIMIT 1",
                  (str(invoice_id), str(invoice_id)))
     if not d:

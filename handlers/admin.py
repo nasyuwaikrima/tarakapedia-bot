@@ -596,7 +596,7 @@ async def dep_detail(c: CallbackQuery):
                   f"├ Metode : {d['method']}\n├ Invoice : <code>{esc(d['invoice_id'] or d['ref'] or '-')}</code>\n"
                   f"├ Status : {d['status']}\n└ {d['created_at']}\n\n"
                   f"Invoice QRIS tidak bisa dibatalkan. Tombol di bawah hanya untuk konfirmasi manual "
-                  f"jika webhook/PixPayz delay.",
+                  f"jika pengecekan otomatis delay.",
                kb([("✅ Konfirmasi Manual", f"adm:da:{d['id']}")], [("⬅️ Daftar", "adm:dep")]))
 
 

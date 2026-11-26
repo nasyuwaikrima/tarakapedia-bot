@@ -129,7 +129,7 @@ async def show_photo(ev, photo, caption: str, markup=None):
 
 
 async def deposit_paid_notice(bot, result):
-    """Notifikasi deposit lunas — dipakai tombol cek, webhook, dan polling."""
+    """Notifikasi deposit lunas — dipakai tombol cek manual dan polling."""
     if not result:
         return
     d, ref, bonus = result

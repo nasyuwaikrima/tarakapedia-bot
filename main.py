@@ -10,9 +10,7 @@ from aiogram.types import CallbackQuery
 
 import db
 import ui
-import webhook
-from config import (ADMIN_IDS, BOT_TOKEN, DB_PATH, PIXPAYZ_POLL_SECONDS,
-                    PIXPAYZ_WEBHOOK_PORT)
+from config import ADMIN_IDS, BOT_TOKEN, DB_PATH, PIXPAYZ_POLL_SECONDS
 from handlers import admin, user
 from payments import gateway
 from providers import provider
@@ -54,7 +52,7 @@ async def sync_catalog() -> int:
 
 
 async def poll_invoices(bot: Bot, offset: int = 0) -> int:
-    """Cek invoice QRIS pending sebagai cadangan webhook (maks 20 per siklus)."""
+    """Cek invoice QRIS pending ke PixPayz (maks 20 per siklus, bergilir)."""
     rows = await db.q("SELECT * FROM deposits WHERE status='pending' AND invoice_id IS NOT NULL "
                       "AND invoice_id!='' ORDER BY id")
     if not rows:
@@ -149,14 +147,7 @@ async def main():
             log.warning("Gagal sinkron katalog saat start", exc_info=True)
     else:
         log.warning("Kredensial MedanPedia kosong — order real akan ditolak sampai .env diisi")
-    wh_runner = None
-    if gateway.configured:
-        try:
-            wh_runner = await webhook.start(bot)
-        except OSError:
-            log.warning("Port webhook %s dipakai; polling invoice tetap aktif",
-                        PIXPAYZ_WEBHOOK_PORT, exc_info=True)
-    else:
+    if not gateway.configured:
         log.warning("API key PixPayz kosong — deposit QRIS belum bisa dibuat")
     me = await bot.me()
     log.info("Bot @%s berjalan", me.username)
@@ -166,7 +157,6 @@ async def main():
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
-        await webhook.stop(wh_runner)
         await gateway.close()
         await provider.close()
         await db.close()
