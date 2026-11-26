@@ -37,7 +37,7 @@ Bot SMM panel berbasis Telegram dengan **order real ke API MedanPedia**, katalog
 - ✅ **Modal provider disembunyikan** dari semua tampilan user. User hanya melihat harga jual.
 - ✅ Menu utama dikirim sebagai **foto + caption** yang rapi; foto bisa diganti admin lewat panel. Tombol back/menu/invoice **mengedit pesan yang sama**, jadi tidak spam chat.
 - ✅ Kategori & layanan diurutkan **termurah → termahal** memakai harga jual efektif (modal + margin tidak pernah bocor).
-- ✅ **Top Transaksi** tampil di menu `/start` (3 teratas: username + total rupiah yang dibelanjakan) dan bisa dibuka sampai 10 teratas. Tersedia periode **Semua / Mingguan (7 hari) / Bulanan (30 hari)** lewat tombol di home menu atau tab di papan peringkat.
+- ✅ **Top Transaksi** tampil di menu `/start` (3 teratas: username + total rupiah yang dibelanjakan) dan bisa dibuka sampai 10 teratas lewat satu tombol di home menu. Periode **Semua / Mingguan (7 hari) / Bulanan (30 hari)** dipilih lewat tab di dalam papan peringkat, supaya home menu tidak penuh.
 - ✅ Deposit **QRIS PixPayz real**: invoice dibuat otomatis, QRIS bisa dilihat ulang kapan saja lewat riwayat, status lunas dicek otomatis ke PixPayz tiap 20 detik (**tanpa webhook/domain**), invoice **tidak bisa dibatalkan**.
 - ✅ Batas **3 invoice aktif per user** (bisa diatur admin) — antrean deposit tetap terkendali.
 - ✅ **Wajib gabung 2 channel**: `@tarakapedia` (register) & `@tarakapedia_log` (log). Berlaku juga untuk user lama; kalau keluar, bot menyuruh gabung lagi.
@@ -254,7 +254,7 @@ ID Provider dan tipe boleh kosong. Layanan dengan ID provider ikut dipakai untuk
 - 🧾 **Riwayat Deposit** → lihat semua transaksi; ketuk salah satu untuk menampilkan QRIS/invoice lama lagi dan cek status.
 - 🛒 **Order Termurah** → kategori & layanan diurutkan termurah dulu → target → jumlah (jika perlu) → field tambahan (jika perlu) → konfirmasi.
 - 📦 **Pesanan Saya** → status order & refill (ID provider tetap tersimpan internal, tidak ditampilkan).
-- 🏆 **Top Transaksi** → papan peringkat 3 teratas (periode Semua) tampil langsung di menu `/start`; tombol **🏆 Top Transaksi / 📅 Mingguan / 🗓 Bulanan** menampilkan 10 teratas beserta username dan total rupiah transaksi. Urutan memakai total belanja (`total_spent`), bukan jumlah order. Periode mingguan/bulanan dihitung dari tanggal order, tidak termasuk order dibatalkan; tab periode juga tersedia di dalam papan.
+- 🏆 **Top Transaksi** → papan peringkat 3 teratas (periode Semua) tampil langsung di menu `/start`; tombol **🏆 Top Transaksi** membuka papan 10 teratas beserta username dan total rupiah transaksi. Di dalam papan ada tab **Semua / Mingguan / Bulanan** — jadi tidak perlu menambah tombol periode di home menu. Urutan memakai total belanja (`total_spent`), bukan jumlah order. Periode mingguan/bulanan dihitung dari tanggal order, tidak termasuk order dibatalkan.
 - Lainnya: toko aplikasi, riwayat, profil, kode referral, misi, **📢 Channel Kami**, **📜 Log Transaksi**, website, hubungi admin.
 
 Perintah penting: `/start`, `/menu`, `/admin` (khusus admin).
