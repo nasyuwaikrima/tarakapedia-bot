@@ -1,4 +1,5 @@
 import json
+import math
 import os
 from datetime import datetime, timezone, timedelta
 
@@ -36,7 +37,9 @@ CREATE TABLE IF NOT EXISTS orders(
   link TEXT, quantity INTEGER, price INTEGER, status TEXT DEFAULT 'Pending',
   provider_order_id TEXT, created_at TEXT,
   provider_id INTEGER, provider_type TEXT DEFAULT 'default', extra TEXT DEFAULT '',
-  refill_id TEXT, refill_status TEXT, checked_at TEXT);
+  provider_price INTEGER DEFAULT 0,
+  refill_id TEXT, refill_status TEXT, checked_at TEXT,
+  ref_bonus INTEGER DEFAULT 0, ref_bonus_user INTEGER);
 CREATE TABLE IF NOT EXISTS deposits(
   id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, amount INTEGER, method TEXT,
   ref TEXT, status TEXT DEFAULT 'pending', created_at TEXT,
@@ -63,11 +66,11 @@ CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id);
 
 DEFAULT_SETTINGS = {
     "maintenance": "0",
-    "ref_percent": "5",
-    "ref_signup_bonus": "500",
+    "ref_percent": "20",     # % dari margin order yang sukses, bukan dari deposit
+    "ref_signup_bonus": "0", # default 0 supaya tidak rugi di awal (bisa diatur admin)
     "min_deposit": "10000",
     "announcement": "",
-    "markup_percent": "35",   # margin minimum atas modal provider
+    "markup_percent": "25",   # margin minimum atas modal provider
     "markup_flat": "0",       # margin tetap (Rp) per 1000
     "auto_sync": "1",         # tarik layanan otomatis saat bot start
     "service_fav": "0",       # hanya ambil layanan favorit provider
@@ -84,7 +87,8 @@ SERVICE_COLUMNS = {
 ORDER_COLUMNS = {
     "provider_id": "INTEGER", "provider_type": "TEXT DEFAULT 'default'",
     "extra": "TEXT DEFAULT ''", "refill_id": "TEXT", "refill_status": "TEXT",
-    "checked_at": "TEXT",
+    "checked_at": "TEXT", "provider_price": "INTEGER DEFAULT 0",
+    "ref_bonus": "INTEGER DEFAULT 0", "ref_bonus_user": "INTEGER",
 }
 DEPOSIT_COLUMNS = {
     "invoice_id": "TEXT", "qris_image": "TEXT DEFAULT ''",
@@ -104,6 +108,18 @@ async def _migrate():
         for col, decl in columns.items():
             if col not in have:
                 await x(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+
+    # Sekali saja: database lama memakai markup 35% & skema referral lama.
+    if not await q1("SELECT 1 FROM settings WHERE key='markup_25_applied'"):
+        if (await setting("markup_percent")) == "35":
+            await set_setting("markup_percent", "25")
+        await set_setting("markup_25_applied", "1")
+    if not await q1("SELECT 1 FROM settings WHERE key='ref_safe_applied'"):
+        if (await setting("ref_percent")) == "5":
+            await set_setting("ref_percent", "20")
+        if (await setting("ref_signup_bonus")) == "500":
+            await set_setting("ref_signup_bonus", "0")
+        await set_setting("ref_safe_applied", "1")
 
 
 async def init(path: str):
@@ -367,23 +383,18 @@ async def create_deposit(uid, amount, method, ref="", info=None) -> int:
 
 
 async def confirm_deposit(dep_id):
-    """Return (deposit_row, referrer_id, bonus) atau None jika sudah diproses."""
+    """Return (deposit_row, None, 0) atau None jika sudah diproses.
+
+    Komisi referral sengaja tidak dibayar saat deposit: deposit bukan pendapatan,
+    jadi dibayar setelah order sukses dari margin yang benar-benar didapat.
+    """
     c = await x("UPDATE deposits SET status='success', paid_at=? WHERE id=? AND status='pending'",
                 (now(), dep_id))
     if c.rowcount == 0:
         return None
     d = await q1("SELECT * FROM deposits WHERE id=?", (dep_id,))
     await add_balance(d["user_id"], d["amount"], "deposit", f"Deposit #{dep_id}")
-    u = await get_user(d["user_id"])
-    ref, bonus = None, 0
-    if u and u["referred_by"]:
-        pct = int(await setting("ref_percent") or 0)
-        bonus = d["amount"] * pct // 100
-        if bonus > 0:
-            ref = u["referred_by"]
-            await add_balance(ref, bonus, "referral", f"Komisi deposit {u['id']}")
-            await x("UPDATE users SET ref_earned=ref_earned+? WHERE id=?", (bonus, ref))
-    return d, ref, bonus
+    return d, None, 0
 
 
 async def confirm_deposit_by_invoice(invoice_id):
@@ -416,9 +427,9 @@ async def create_order(uid, svc, link, qty, price, extra=None):
     if not await debit(uid, price, "order", note):
         return None
     c = await x("INSERT INTO orders(user_id,service_id,service_name,link,quantity,price,created_at,"
-                "provider_id,provider_type,extra) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                "provider_id,provider_type,provider_price,extra) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (uid, svc["id"], svc["name"], link, qty, price, now(),
-                 svc["provider_id"], svc["provider_type"], extra_json))
+                 svc["provider_id"], svc["provider_type"], int(svc["provider_price"] or 0), extra_json))
     await x("UPDATE users SET total_order=total_order+1, total_spent=total_spent+? WHERE id=?", (price, uid))
     return c.lastrowid
 
@@ -431,7 +442,60 @@ async def cancel_order(oid) -> bool:
     if c.rowcount == 0:
         return False
     await add_balance(o["user_id"], o["price"], "refund", f"Refund order #{oid}")
+    # Komisi yang sudah dibayar ikut ditarik supaya refund tidak bikin rugi.
+    if int(o["ref_bonus"] or 0) > 0 and o["ref_bonus_user"]:
+        await add_balance(o["ref_bonus_user"], -int(o["ref_bonus"]), "referral",
+                          f"Tarik komisi order #{oid} (dibatalkan)")
+        await x("UPDATE users SET ref_earned=MAX(0,ref_earned-?) WHERE id=?",
+                (o["ref_bonus"], o["ref_bonus_user"]))
+        await x("UPDATE orders SET ref_bonus=0, ref_bonus_user=NULL WHERE id=?", (oid,))
     return True
+
+
+def _order_billable(o) -> int:
+    """Satuan tagihan order: qty, jumlah baris komentar/username, atau 1 paket."""
+    qty = int(o["quantity"] or 0)
+    if qty > 0:
+        return qty
+    try:
+        extra = json.loads(o["extra"] or "{}")
+    except (TypeError, ValueError):
+        extra = {}
+    for key in ("comments", "usernames"):
+        val = extra.get(key)
+        if val:
+            return max(1, len([line for line in str(val).splitlines() if line.strip()]))
+    return 1000 if o["provider_type"] == "package" else 1
+
+
+async def pay_order_referral(oid):
+    """Bayar komisi sekali, hanya dari margin order yang sudah Completed.
+
+    Return (bonus, referrer_id). ref_percent dipatok maks 50% margin supaya
+    bot tetap untung. Modal provider hanya dipakai internal, tidak bocor ke user.
+    """
+    o = await q1("SELECT * FROM orders WHERE id=? AND status='Completed'", (oid,))
+    if not o or int(o["ref_bonus"] or 0) > 0:
+        return 0, None
+    u = await get_user(o["user_id"])
+    ref = u["referred_by"] if u else None
+    modal = int(o["provider_price"] or 0)
+    if not modal and o["service_id"]:
+        s = await q1("SELECT provider_price FROM services WHERE id=?", (o["service_id"],))
+        modal = int(s["provider_price"] or 0) if s else 0
+    billable = _order_billable(o)
+    if not ref or modal <= 0 or billable <= 0:
+        return 0, None
+    cost = math.ceil(modal * billable / 1000)
+    margin = max(0, int(o["price"]) - cost)
+    pct = max(0, min(50, int(await setting("ref_percent") or 0)))
+    bonus = margin * pct // 100
+    if bonus <= 0:
+        return 0, None
+    await add_balance(ref, bonus, "referral", f"Komisi order #{oid}")
+    await x("UPDATE users SET ref_earned=ref_earned+? WHERE id=?", (bonus, ref))
+    await x("UPDATE orders SET ref_bonus=?, ref_bonus_user=? WHERE id=?", (bonus, ref, oid))
+    return bonus, ref
 
 
 # ---------- shop ----------

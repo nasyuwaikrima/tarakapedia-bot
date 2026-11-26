@@ -101,6 +101,11 @@ async def worker(bot: Bot):
                                        (st, db.now(), o["id"], o["status"]))
                         if c.rowcount and st == "Completed":
                             try:
+                                bonus, ref_id = await db.pay_order_referral(o["id"])
+                                await ui.referral_paid_notice(bot, o["id"], bonus, ref_id)
+                            except Exception:
+                                log.exception("Gagal bayar komisi referral order %s", o["id"])
+                            try:
                                 await bot.send_message(o["user_id"], f"✅ Pesanan <code>#{o['id']}</code> "
                                                                      f"({ui.esc(o['service_name'])}) telah selesai!")
                             except Exception:

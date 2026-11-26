@@ -571,9 +571,17 @@ async def ord_status(c: CallbackQuery):
         if not await db.cancel_order(oid):
             return await c.answer("Order tidak bisa dibatalkan.", show_alert=True)
         msg = f"❌ Order <code>#{oid}</code> dibatalkan, saldo {rp(o['price'])} dikembalikan."
+        if o["ref_bonus"]:
+            await ui.log_channel(c.bot, f"↩️ Komisi referral order #{oid} ({rp(o['ref_bonus'])}) ditarik karena order dibatalkan.")
     else:
         new = "Completed" if code == "c" else "Processing"
         await db.x("UPDATE orders SET status=? WHERE id=? AND status NOT IN ('Canceled')", (new, oid))
+        if new == "Completed":
+            try:
+                rb, rid = await db.pay_order_referral(oid)
+                await ui.referral_paid_notice(c.bot, oid, rb, rid)
+            except Exception:
+                pass
         msg = f"{ui.STATUS_EMOJI[new]} Order <code>#{oid}</code> sekarang: <b>{ui.STATUS_ID[new]}</b>."
     try:
         await c.bot.send_message(o["user_id"], msg)
@@ -660,7 +668,7 @@ async def msn_add_msg(m: Message, state: FSMContext):
 
 
 # ---------- pengaturan ----------
-SET_LABELS = {"ref_percent": "Komisi referral (%)", "ref_signup_bonus": "Bonus daftar referral (Rp)",
+SET_LABELS = {"ref_percent": "Komisi referral (% margin, max 50)", "ref_signup_bonus": "Bonus daftar referral (Rp, 0=off)",
               "min_deposit": "Minimal deposit (Rp)", "max_active_deposit": "Batas invoice aktif per user",
               "announcement": "Pengumuman dashboard"}
 
