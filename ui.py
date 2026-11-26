@@ -109,6 +109,46 @@ async def menu_caption(uid: int) -> str:
     return t
 
 
+async def show_photo(ev, photo, caption: str, markup=None):
+    """Kirim foto dari URL/path dengan fallback teks jika Telegram gagal fetch."""
+    if isinstance(ev, CallbackQuery):
+        try:
+            await ev.message.delete()
+        except TelegramBadRequest:
+            pass
+        try:
+            await ev.message.answer_photo(photo=photo, caption=caption[:1000], reply_markup=markup)
+        except TelegramBadRequest:
+            await ev.message.answer(caption, reply_markup=markup, disable_web_page_preview=True)
+        await answer_cb(ev)
+    else:
+        try:
+            await ev.answer_photo(photo=photo, caption=caption[:1000], reply_markup=markup)
+        except TelegramBadRequest:
+            await ev.answer(caption, reply_markup=markup, disable_web_page_preview=True)
+
+
+async def deposit_paid_notice(bot, result):
+    """Notifikasi deposit lunas — dipakai tombol cek, webhook, dan polling."""
+    if not result:
+        return
+    d, ref, bonus = result
+    u = await db.get_user(d["user_id"])
+    try:
+        await bot.send_message(d["user_id"],
+                               f"✅ <b>Deposit Berhasil!</b>\n\n├ Nominal : <b>{rp(d['amount'])}</b>\n"
+                               f"└ Saldo : <b>{rp(u['balance'])}</b>",
+                               reply_markup=kb([("🛒 Order Layanan", "ord")], BACK))
+    except Exception:
+        pass
+    if ref:
+        try:
+            await bot.send_message(ref, f"💸 Komisi referral <b>{rp(bonus)}</b> dari deposit downline Anda.")
+        except Exception:
+            pass
+    await notify_admins(bot, f"💰 Deposit QRIS #{d['id']} dari <code>{d['user_id']}</code>: {rp(d['amount'])}")
+
+
 async def notify_admins(bot, text: str):
     for a in ADMIN_IDS:
         try:

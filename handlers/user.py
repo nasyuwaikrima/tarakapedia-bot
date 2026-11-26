@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery, Message
 
 import db
 import ui
-from config import BOT_NAME
+from config import BOT_NAME, MAX_ACTIVE_DEPOSITS
 from payments import gateway
 from providers import LABEL_FIELDS, needs_quantity, provider, type_fields
 from ui import BACK, LINE, answer_cb, esc, kb, rp, show
@@ -60,33 +60,85 @@ async def menu_cb(c: CallbackQuery, state: FSMContext):
     await _menu(c, state)
 
 
-# ---------- deposit ----------
+# ---------- deposit QRIS ----------
+DEP_ICON = {"pending": "🕒", "success": "✅", "expired": "⌛", "failed": "❌", "rejected": "❌"}
+DEP_TEXT = {"pending": "Menunggu bayar", "success": "Lunas", "expired": "Kedaluwarsa",
+            "failed": "Gagal", "rejected": "Ditolak"}
+
+
+async def _dep_limit(uid: int):
+    limit = int(await db.setting("max_active_deposit") or MAX_ACTIVE_DEPOSITS)
+    return limit, await db.active_deposits(uid)
+
+
+def _dep_status(d) -> str:
+    return f"{DEP_ICON.get(d['status'], '•')} {DEP_TEXT.get(d['status'], d['status'])}"
+
+
 @router.callback_query(F.data == "dep")
 async def dep_menu(c: CallbackQuery, state: FSMContext):
     await state.clear()
+    limit, active = await _dep_limit(c.from_user.id)
     mn = int(await db.setting("min_deposit") or 0)
-    amts = [10000, 25000, 50000, 100000, 250000, 500000]
-    rows = [[(rp(a), f"dep:a:{a}") for a in amts[i:i + 2]] for i in range(0, len(amts), 2)]
-    rows += [[("✏️ Nominal Lain", "dep:custom")], BACK]
-    await show(c, f"{LINE}\n💰 <b>DEPOSIT SALDO</b>\n{LINE}\n\nMinimal deposit: <b>{rp(mn)}</b>\n"
-                  f"Metode: <b>{gateway.name}</b>\n\nPilih nominal deposit:", kb(*rows))
+    t = (f"{LINE}\n💰 <b>DEPOSIT SALDO</b>\n{LINE}\n\n"
+         f"├ Minimal : <b>{rp(mn)}</b>\n├ Metode : <b>QRIS (PixPayz)</b>\n"
+         f"├ Invoice aktif : <b>{len(active)}/{limit}</b>\n"
+         f"└ Invoice tidak bisa dibatalkan.\n")
+    rows = []
+    if active:
+        t += "\n🧾 <b>Invoice aktif</b> — ketuk untuk lihat QRIS lagi:"
+        rows += [[(f"🕒 #{d['id']} • {rp(d['amount'])}", f"dep:view:{d['id']}")] for d in active]
+    if len(active) >= limit:
+        t += f"\n\n⚠️ Batas <b>{limit} transaksi aktif</b> tercapai. Selesaikan atau tunggu invoice kedaluwarsa."
+    else:
+        amts = [10000, 25000, 50000, 100000, 250000, 500000]
+        rows += [[(rp(a), f"dep:a:{a}") for a in amts[i:i + 2]] for i in range(0, len(amts), 2)]
+        rows += [[("✏️ Nominal Lain", "dep:custom")]]
+    rows += [[("📄 Riwayat Deposit", "dep:hist")], BACK]
+    await show(c, t, kb(*rows))
+
+
+async def _show_invoice(ev, did: int):
+    d = await db.q1("SELECT * FROM deposits WHERE id=? AND user_id=?", (did, ev.from_user.id))
+    if not d:
+        return await answer_cb(ev, "Tagihan tidak ditemukan.", True)
+    caption = (f"{LINE}\n🧾 <b>INVOICE DEPOSIT #{d['id']}</b>\n{LINE}\n\n"
+               f"├ Invoice ID : <code>{esc(d['invoice_id'] or d['ref'] or '-')}</code>\n"
+               f"├ Nominal : <b>{rp(d['amount'])}</b>\n"
+               f"├ Status : <b>{_dep_status(d)}</b>\n"
+               f"├ Dibuat : {d['created_at']} WIB\n"
+               f"└ Berlaku s/d : {d['expired_at'] or '-'}\n\n"
+               f"📌 Scan QRIS di bawah atau buka halaman pembayaran. Setelah bayar, tekan 🔄 Cek Status "
+               f"(status juga terdeteksi otomatis).")
+    rows = []
+    if d["payment_link"]:
+        rows.append([("🧾 Halaman Bayar", d["payment_link"])])
+    if d["status"] == "pending":
+        rows.append([("🔄 Cek Status", f"dep:check:{did}")])
+    rows += [[("📄 Riwayat Deposit", "dep:hist")], BACK]
+    markup = kb(*rows)
+    if d["qris_image"]:
+        await ui.show_photo(ev, d["qris_image"], caption, markup)
+    else:
+        await show(ev, caption, markup)
 
 
 async def _make_deposit(ev, uid: int, amount: int):
     mn = int(await db.setting("min_deposit") or 0)
     if amount < mn:
         return await show(ev, f"⚠️ Minimal deposit {rp(mn)}.", kb([("⬅️ Kembali", "dep")]))
-    did = await db.create_deposit(uid, amount, gateway.name)
-    info = await gateway.create(did, amount)
-    await db.x("UPDATE deposits SET ref=? WHERE id=?", (info["ref"], did))
-    rows = []
-    if gateway.demo:
-        rows.append([("✅ Bayar (Demo)", f"dep:pay:{did}")])
-    rows.append([("❌ Batalkan", f"dep:cx:{did}")])
-    await show(ev, f"{LINE}\n🧾 <b>TAGIHAN DEPOSIT</b>\n{LINE}\n\n"
-                   f"├ ID : <code>#{did}</code>\n├ Ref : <code>{info['ref']}</code>\n"
-                   f"├ Nominal : <b>{rp(amount)}</b>\n└ Status : 🕒 Menunggu pembayaran\n\n{info['instructions']}",
-               kb(*rows))
+    limit, active = await _dep_limit(uid)
+    if len(active) >= limit:
+        return await show(ev, f"⚠️ Maksimal <b>{limit} invoice aktif</b> per user.\n"
+                              f"Selesaikan atau tunggu yang lama kedaluwarsa dulu.",
+                          kb([("📄 Riwayat Deposit", "dep:hist")], BACK))
+    try:
+        info = await gateway.create(0, amount)
+    except Exception as e:
+        return await show(ev, f"⚠️ Gagal membuat invoice QRIS: {esc(str(e)[:160])}",
+                          kb([("🔄 Coba Lagi", "dep")], BACK))
+    did = await db.create_deposit(uid, amount, gateway.name, info["ref"], info)
+    await _show_invoice(ev, did)
 
 
 @router.callback_query(F.data.startswith("dep:a:"))
@@ -109,36 +161,61 @@ async def dep_custom_msg(m: Message, state: FSMContext):
     await _make_deposit(m, m.from_user.id, int(digits))
 
 
-@router.callback_query(F.data.startswith("dep:pay:"))
-async def dep_pay(c: CallbackQuery):
-    if not gateway.demo:
-        return await c.answer("Tidak tersedia.", show_alert=True)
+@router.callback_query(F.data.startswith("dep:view:"))
+async def dep_view(c: CallbackQuery):
+    await _show_invoice(c, int(c.data.split(":")[2]))
+
+
+@router.callback_query(F.data.startswith("dep:check:"))
+async def dep_check(c: CallbackQuery):
     did = int(c.data.split(":")[2])
     d = await db.q1("SELECT * FROM deposits WHERE id=? AND user_id=?", (did, c.from_user.id))
-    if not d:
-        return await c.answer("Tagihan tidak ditemukan.", show_alert=True)
-    res = await db.confirm_deposit(did)
-    if not res:
-        return await c.answer("Tagihan sudah diproses.", show_alert=True)
-    d, ref, bonus = res
-    u = await db.get_user(c.from_user.id)
-    await show(c, f"✅ <b>Deposit Berhasil!</b>\n\n├ Nominal : <b>{rp(d['amount'])}</b>\n└ Saldo : <b>{rp(u['balance'])}</b>",
-               kb([("🛒 Order Layanan", "ord")], BACK))
-    if ref:
-        try:
-            await c.bot.send_message(ref, f"💸 Komisi referral <b>{rp(bonus)}</b> dari deposit downline Anda.")
-        except Exception:
-            pass
-    await ui.notify_admins(c.bot, f"💰 Deposit demo #{did} dari <code>{c.from_user.id}</code>: {rp(d['amount'])}")
+    if not d or d["status"] != "pending":
+        return await answer_cb(c, "Tagihan ini sudah tidak aktif.", True)
+    try:
+        res = await gateway.check(d["invoice_id"] or d["ref"])
+    except Exception as e:
+        return await answer_cb(c, f"⚠️ Cek gagal: {esc(str(e)[:140])}", True)
+    status = res["status"]
+    if gateway.is_paid(status):
+        result = await db.confirm_deposit_by_invoice(d["invoice_id"] or d["ref"])
+        if result:
+            await ui.deposit_paid_notice(c.bot, result)
+            return await show(c, "✅ <b>Pembayaran terdeteksi!</b> Saldo sudah ditambahkan.",
+                              kb([("🛒 Order Layanan", "ord")], BACK))
+    if gateway.is_expired(status):
+        await db.expire_deposit_by_invoice(d["invoice_id"] or d["ref"])
+        return await show(c, "⌛ Invoice sudah kedaluwarsa. Silakan buat deposit baru.",
+                          kb([("💰 Deposit", "dep")]))
+    await answer_cb(c, "🕒 Masih menunggu pembayaran.", True)
+    await _show_invoice(c, did)
+
+
+@router.callback_query(F.data == "dep:hist")
+async def dep_history(c: CallbackQuery):
+    rows = await db.q("SELECT * FROM deposits WHERE user_id=? ORDER BY id DESC LIMIT 15", (c.from_user.id,))
+    t = f"{LINE}\n📄 <b>RIWAYAT DEPOSIT</b>\n{LINE}\n\n"
+    if rows:
+        for d in rows:
+            t += (f"{_dep_status(d)} <b>#{d['id']}</b> • {rp(d['amount'])}\n"
+                  f"   <code>{esc(d['invoice_id'] or d['ref'] or '-')}</code> • <i>{d['created_at']}</i>\n")
+    else:
+        t += "Belum ada deposit."
+    buttons = [[(f"{DEP_ICON.get(d['status'], '•')} #{d['id']} • {rp(d['amount'])}", f"dep:view:{d['id']}")]
+               for d in rows[:8]]
+    buttons += [[("💰 Deposit Baru", "dep")], BACK]
+    await show(c, t, kb(*buttons))
+
+
+@router.callback_query(F.data.startswith("dep:pay:"))
+async def dep_pay_stub(c: CallbackQuery, state: FSMContext):
+    await answer_cb(c, "Mode demo sudah nonaktif. Bayar lewat QRIS ya, kak.", True)
+    await dep_menu(c, state)
 
 
 @router.callback_query(F.data.startswith("dep:cx:"))
-async def dep_cancel(c: CallbackQuery):
-    did = int(c.data.split(":")[2])
-    await db.x("UPDATE deposits SET status='canceled' WHERE id=? AND user_id=? AND status='pending'",
-               (did, c.from_user.id))
-    await show(c, "❌ Tagihan dibatalkan.", kb(BACK))
-
+async def dep_cancel_stub(c: CallbackQuery):
+    await answer_cb(c, "Invoice QRIS tidak bisa dibatalkan.", True)
 
 # ---------- order layanan (provider real) ----------
 TYPE_LABELS = {
