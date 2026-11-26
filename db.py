@@ -228,6 +228,23 @@ async def effective_price(svc) -> int:
     return max(base, await suggested_price(int(svc["provider_price"])))
 
 
+async def sorted_services(rows) -> list[dict]:
+    """Urutkan layanan by harga jual termurah → termahal (tanpa query per baris).
+
+    Tiap dict hasil punya kunci `_price` = harga efektif yang dipakai user.
+    """
+    pct = int(await setting("markup_percent") or 0)
+    flat = int(await setting("markup_flat") or 0)
+    out = []
+    for s in rows:
+        d = dict(s)
+        modal = int(d.get("provider_price") or 0)
+        base = int(d.get("price_per_1k") or 0)
+        d["_price"] = max(base, hitung_harga(modal, pct, flat)) if modal else base
+        out.append(d)
+    return sorted(out, key=lambda d: (d["_price"], str(d.get("name") or "").lower()))
+
+
 async def sync_services(items: list[dict]) -> dict:
     """Upsert layanan provider ke database. Harga hanya naik, tidak pernah turun otomatis."""
     added = updated = 0

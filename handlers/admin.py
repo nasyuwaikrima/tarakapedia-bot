@@ -340,9 +340,10 @@ async def ban(c: CallbackQuery):
 async def svc_list(c: CallbackQuery, state: FSMContext):
     await state.clear()
     page, per = int(c.data.split(":")[2]), 8
-    rows = await db.q("SELECT * FROM services ORDER BY id")
+    rows = await db.sorted_services(await db.q("SELECT * FROM services"))
     chunk = rows[page * per:(page + 1) * per]
-    kr = [[(f"{'✅' if s['active'] else '⛔'} #{s['id']} {s['name'][:24]}", f"adm:sv:{s['id']}")] for s in chunk]
+    kr = [[(f"{'✅' if s['active'] else '⛔'} #{s['id']} {s['name'][:18]} • {rp(s['_price'])}", f"adm:sv:{s['id']}")]
+          for s in chunk]
     nav = []
     if page > 0:
         nav.append(("◀️", f"adm:svc:{page - 1}"))

@@ -284,15 +284,22 @@ async def _lanjut(ev, state: FSMContext, s, d: dict):
 @router.callback_query(F.data == "ord")
 async def ord_cats(c: CallbackQuery, state: FSMContext):
     await state.clear()
-    cats = await db.q("SELECT c.* FROM categories c WHERE EXISTS "
-                      "(SELECT 1 FROM services s WHERE s.category_id=c.id AND s.active=1) ORDER BY c.id")
+    # Kategori diurutkan mengikuti layanan termurah di dalamnya.
+    svcs = await db.sorted_services(await db.q("SELECT * FROM services WHERE active=1"))
+    termurah = {}
+    for s in svcs:
+        termurah.setdefault(s["category_id"], s["_price"])
+    cats = [x for x in await db.q("SELECT * FROM categories") if x["id"] in termurah]
+    cats.sort(key=lambda x: (termurah[x["id"]], x["name"].lower()))
     if not cats:
         return await show(c, "Belum ada layanan tersedia. Admin bisa sinkron lewat Panel Admin → Provider API.",
                           kb(BACK))
-    rows = [[(f"{x['emoji']} {x['name']}", f"ord:c:{x['id']}:0") for x in cats[i:i + 2]]
-            for i in range(0, len(cats), 2)]
+    rows = [[(f"{x['emoji']} {x['name'][:15]} • {rp(termurah[x['id']])}", f"ord:c:{x['id']}:0")
+             for x in cats[i:i + 2]] for i in range(0, len(cats), 2)]
     rows.append(BACK)
-    await show(c, f"{LINE}\n🛒 <b>ORDER LAYANAN</b>\n{LINE}\n\nPilih kategori layanan:", kb(*rows))
+    await show(c, f"{LINE}\n🛒 <b>ORDER LAYANAN</b>\n{LINE}\n\n"
+                  f"💸 Urutan kategori &amp; layanan: <b>termurah → termahal</b>.\n"
+                  f"Pilih kategori layanan:", kb(*rows))
 
 
 @router.callback_query(F.data.startswith("ord:c:"))
@@ -300,11 +307,13 @@ async def ord_cat(c: CallbackQuery):
     _, _, cid, page = c.data.split(":")
     cid, page, per = int(cid), int(page), 6
     cat = await db.q1("SELECT * FROM categories WHERE id=?", (cid,))
-    svcs = await db.q("SELECT * FROM services WHERE category_id=? AND active=1 ORDER BY id", (cid,))
+    svcs = await db.sorted_services(
+        await db.q("SELECT * FROM services WHERE category_id=? AND active=1", (cid,)))
     chunk = svcs[page * per:(page + 1) * per]
     rows = []
-    for s in chunk:
-        rows.append([(f"{s['name'][:26]} • {rp(await db.effective_price(s))}/1K", f"ord:s:{s['id']}")])
+    for n, s in enumerate(chunk, page * per + 1):
+        badge = "🛡" if s["provider_refill"] else "⚡"
+        rows.append([(f"{n:02d}. {s['name'][:22]} • {rp(s['_price'])} {badge}", f"ord:s:{s['id']}")])
     nav = []
     if page > 0:
         nav.append(("◀️", f"ord:c:{cid}:{page - 1}"))
@@ -313,7 +322,9 @@ async def ord_cat(c: CallbackQuery):
     if nav:
         rows.append(nav)
     rows.append([("⬅️ Kategori", "ord")])
-    await show(c, f"{LINE}\n{cat['emoji']} <b>{esc(cat['name'].upper())}</b>\n{LINE}\n\nPilih layanan:", kb(*rows))
+    await show(c, f"{LINE}\n{cat['emoji']} <b>{esc(cat['name'].upper())}</b>\n{LINE}\n\n"
+                  f"💸 Termurah dulu • {len(svcs)} layanan • halaman {page + 1}\n"
+                  f"🛡 Garansi refill • ⚡ Proses cepat\n\nPilih layanan:", kb(*rows))
 
 
 @router.callback_query(F.data.startswith("ord:s:"))
