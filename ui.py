@@ -2,11 +2,12 @@ import html
 import time
 
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, InlineKeyboardButton
+from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import db
-from config import ADMIN_CONTACT_URL, ADMIN_IDS, BOT_NAME, WEBSITE_URL
+from config import (ADMIN_CONTACT_URL, ADMIN_IDS, BOT_NAME, CUSTOM_MENU_PHOTO,
+                    MENU_PHOTO, WEBSITE_URL)
 
 START = time.time()
 esc = html.escape
@@ -52,6 +53,13 @@ def main_kb(uid: int | None = None):
     return kb(*rows)
 
 
+async def answer_cb(c: CallbackQuery, text: str | None = None, alert: bool = False):
+    try:
+        await c.answer(text, show_alert=alert)
+    except Exception:
+        pass
+
+
 async def show(ev, text: str, markup=None):
     """Edit pesan jika dari tombol, kirim baru jika dari pesan biasa."""
     if isinstance(ev, CallbackQuery):
@@ -60,12 +68,45 @@ async def show(ev, text: str, markup=None):
         except TelegramBadRequest as e:
             if "not modified" not in str(e):
                 await ev.message.answer(text, reply_markup=markup, disable_web_page_preview=True)
-        try:
-            await ev.answer()
-        except Exception:
-            pass
+        await answer_cb(ev)
     else:
         await ev.answer(text, reply_markup=markup, disable_web_page_preview=True)
+
+
+def menu_photo():
+    """Foto unggahan admin mengalahkan foto bawaan."""
+    return CUSTOM_MENU_PHOTO if CUSTOM_MENU_PHOTO.exists() else MENU_PHOTO
+
+
+async def show_menu(ev, caption: str, markup=None):
+    """Menu utama dikirim sebagai foto + caption; fallback ke teks bila foto tidak ada."""
+    photo = menu_photo()
+    if not photo.exists():
+        return await show(ev, caption, markup)
+    if isinstance(ev, CallbackQuery):
+        try:
+            await ev.message.delete()
+        except TelegramBadRequest:
+            pass
+        await ev.message.answer_photo(FSInputFile(photo), caption=caption[:1000], reply_markup=markup)
+        await answer_cb(ev)
+    else:
+        await ev.answer_photo(FSInputFile(photo), caption=caption[:1000], reply_markup=markup)
+
+
+async def menu_caption(uid: int) -> str:
+    u = await db.get_user(uid)
+    s = await db.global_stats()
+    t = (f"{LINE}\n💎 <b>{esc(BOT_NAME.upper())} · SMM PANEL</b>\n{LINE}\n\n"
+         f"Halo kak {esc(u['name'] or 'kaw')} 👋\n"
+         f"💰 Saldo : <b>{rp(u['balance'])}</b>\n"
+         f"📦 Order : <b>{num(u['total_order'])}</b> kali\n"
+         f"👥 Member : <b>{num(s['users'])}</b> orang\n\n"
+         f"Pilih menu di bawah ya — order diproses otomatis 🔥")
+    ann = await db.setting("announcement")
+    if ann:
+        t += f"\n\n📢 {esc(ann[:180])}"
+    return t
 
 
 async def notify_admins(bot, text: str):

@@ -9,8 +9,9 @@ from aiogram.types import CallbackQuery, FSInputFile, Message
 
 import db
 import ui
-from config import ADMIN_IDS, DB_PATH
-from ui import LINE, esc, kb, rp, show
+from config import ADMIN_IDS, CUSTOM_MENU_PHOTO, DB_PATH
+from providers import normalize_type, provider
+from ui import LINE, answer_cb, esc, kb, rp, show
 
 router = Router()
 
@@ -34,6 +35,9 @@ class A(StatesGroup):
     msn_add = State()
     set_edit = State()
     bc = State()
+    markup = State()
+    refill_id = State()
+    menu_photo = State()
 
 
 PANEL = [("⬅️ Panel Admin", "adm")]
@@ -70,6 +74,7 @@ def panel_kb():
         [("🛒 Layanan", "adm:svc:0"), ("📱 Produk App", "adm:prd")],
         [("📦 Pesanan", "adm:ord"), ("💳 Deposit", "adm:dep")],
         [("🎯 Misi", "adm:msn"), ("⚙️ Pengaturan", "adm:set")],
+        [("🌐 Provider API", "adm:api"), ("📸 Foto Menu", "adm:menuphoto")],
         [("📢 Broadcast", "adm:bc"), ("💾 Backup DB", "adm:bak")],
         [("⬅️ Menu Utama", "menu")],
     )
@@ -95,6 +100,170 @@ async def stats(c: CallbackQuery):
                   f"<b>Total</b>\n├ User : {ui.num(s['users'])}\n├ Order : {ui.num(s['orders'])}\n├ Omzet : {rp(s['revenue'])}\n"
                   f"├ Total deposit : {rp(s['deposits'])}\n├ Saldo user beredar : {rp(s['balance'])}\n"
                   f"└ Uptime bot : {ui.uptime()}", kb([("🔄 Refresh", "adm:stats")], PANEL))
+
+
+# ---------- provider API ----------
+async def api_text(balance=None) -> str:
+    n = (await db.q1("SELECT COUNT(*) n FROM services WHERE source='provider'"))["n"]
+    pct = await db.setting("markup_percent")
+    flat = await db.setting("markup_flat")
+    bal = "ketuk Cek Modal" if balance is None else rp(balance)
+    return (f"{LINE}\n🌐 <b>PROVIDER API · MEDANPEDIA</b>\n{LINE}\n\n"
+            f"├ Kredensial : {'✅ Terhubung' if provider.configured else '❌ Belum diisi di .env'}\n"
+            f"├ Modal provider : <b>{esc(bal)}</b> (khusus admin)\n"
+            f"├ Layanan tersinkron : <b>{n}</b>\n"
+            f"├ Favorit saja : {'⭐ Ya' if await db.setting('service_fav') == '1' else 'Semua'}\n"
+            f"├ Auto sinkron : {'✅ ON' if await db.setting('auto_sync') == '1' else '⛔ OFF'}\n"
+            f"└ Margin : <b>{esc(pct)}%</b> + {rp(flat)} / 1K\n\n"
+            f"🔒 Modal provider tidak pernah ditampilkan ke user. Harga jual otomatis "
+            f"naik mengikuti modal agar bot tetap untung.")
+
+
+def api_kb():
+    return kb(
+        [("🔄 Sync Layanan", "adm:apisync"), ("💰 Cek Modal", "adm:apibal")],
+        [("💲 Atur Margin", "adm:markup"), ("⭐ Favorit", "adm:apifav")],
+        [("⏱ Auto Sync", "adm:autosync"), ("🔁 Refill Order", "adm:refill")],
+        [("📊 Cek Refill", "adm:rstatus")], PANEL,
+    )
+
+
+@router.callback_query(F.data == "adm:api")
+async def api_menu(c: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await show(c, await api_text(), api_kb())
+
+
+@router.callback_query(F.data == "adm:apisync")
+async def api_sync(c: CallbackQuery):
+    await show(c, "⏳ Menarik katalog layanan dari provider...")
+    try:
+        fav = await db.setting("service_fav") == "1"
+        items = await provider.services(service_fav=fav)
+        res = await db.sync_services(items)
+        await show(c, f"✅ <b>Sinkron selesai</b>\n\n├ Layanan diterima : <b>{res['total']}</b>\n"
+                      f"├ Baru : <b>{res['added']}</b>\n└ Diperbarui : <b>{res['updated']}</b>\n\n"
+                      f"Harga jual otomatis menyesuaikan margin. Modal tetap tersembunyi.", api_kb())
+    except Exception as e:
+        await show(c, f"⚠️ Gagal sinkron: {esc(str(e)[:200])}", api_kb())
+
+
+@router.callback_query(F.data == "adm:apibal")
+async def api_balance(c: CallbackQuery):
+    await show(c, "⏳ Mengambil saldo provider...")
+    try:
+        info = await provider.profile()
+        await show(c, await api_text(info["balance"]), api_kb())
+    except Exception as e:
+        await answer_cb(c, f"⚠️ {esc(str(e)[:160])}", True)
+
+
+@router.callback_query(F.data == "adm:apifav")
+async def api_fav(c: CallbackQuery):
+    val = await db.setting("service_fav") == "1"
+    await db.set_setting("service_fav", "0" if val else "1")
+    await answer_cb(c, "Filter favorit diubah. Sinkron ulang untuk menerapkan.")
+    await show(c, await api_text(), api_kb())
+
+
+@router.callback_query(F.data == "adm:autosync")
+async def api_autosync(c: CallbackQuery):
+    val = await db.setting("auto_sync") == "1"
+    await db.set_setting("auto_sync", "0" if val else "1")
+    await show(c, await api_text(), api_kb())
+
+
+@router.callback_query(F.data == "adm:markup")
+async def markup(c: CallbackQuery, state: FSMContext):
+    await prompt(c, state, A.markup,
+                 "💲 Kirim <b>margin keuntungan</b>:\n\n<code>persen | flat</code>\n\n"
+                 "Contoh: <code>35 | 0</code> artinya harga jual = modal + 35% + Rp 0 per 1K.\n"
+                 "Harga user tidak pernah turun otomatis.")
+
+
+@router.message(A.markup)
+async def markup_msg(m: Message, state: FSMContext):
+    p = [x.strip() for x in (m.text or "").split("|")]
+    try:
+        pct, flat = max(0, toint(p[0])), max(0, toint(p[1]) if len(p) > 1 else 0)
+    except (ValueError, IndexError):
+        return await m.answer("⚠️ Format salah. Contoh: <code>35 | 0</code>")
+    await db.set_setting("markup_percent", str(pct))
+    await db.set_setting("markup_flat", str(flat))
+    n = 0
+    for s in await db.q("SELECT * FROM services WHERE auto_price=1 AND provider_price>0"):
+        new = max(s["price_per_1k"], await db.suggested_price(s["provider_price"]))
+        if new != s["price_per_1k"]:
+            await db.x("UPDATE services SET price_per_1k=? WHERE id=?", (new, s["id"]))
+            n += 1
+    await state.clear()
+    await m.answer(f"✅ Margin jadi <b>{pct}%</b> + {rp(flat)}/1K.\n{n} harga layanan disesuaikan.",
+                   reply_markup=kb([("🌐 Provider API", "adm:api")], PANEL))
+
+
+@router.callback_query(F.data.in_({"adm:refill", "adm:rstatus"}))
+async def refill_prompt(c: CallbackQuery, state: FSMContext):
+    mode = "request" if c.data == "adm:refill" else "check"
+    text = ("🔁 Kirim <b>ID order bot</b> yang ingin direfill:" if mode == "request"
+            else "📊 Kirim <b>ID order bot</b> untuk cek status refill:")
+    await prompt(c, state, A.refill_id, text, mode=mode)
+
+
+@router.message(A.refill_id)
+async def refill_msg(m: Message, state: FSMContext):
+    mode = (await state.get_data())["mode"]
+    try:
+        oid = toint(m.text or "")
+    except ValueError:
+        return await m.answer("⚠️ Kirim ID order berupa angka.")
+    o = await db.q1("SELECT * FROM orders WHERE id=?", (oid,))
+    if not o:
+        return await m.answer("⚠️ Order tidak ditemukan.")
+    try:
+        if mode == "request":
+            if not o["provider_order_id"]:
+                return await m.answer("⚠️ Order ini belum punya ID provider.")
+            rid = await provider.refill(o["provider_order_id"])
+            await db.x("UPDATE orders SET refill_id=?, refill_status='Pending', checked_at=? WHERE id=?",
+                       (rid, db.now(), oid))
+            result = f"✅ Refill diajukan • ID <code>{esc(rid)}</code>"
+        else:
+            if not o["refill_id"]:
+                return await m.answer("⚠️ Order ini belum pernah direfill.")
+            st = await provider.refill_status(o["refill_id"])
+            await db.x("UPDATE orders SET refill_status=?, checked_at=? WHERE id=?", (st, db.now(), oid))
+            result = f"📊 Status refill: <b>{esc(st)}</b>"
+    except Exception as e:
+        result = f"⚠️ Gagal: {esc(str(e)[:160])}"
+    await state.clear()
+    await m.answer(result, reply_markup=kb([("📦 Pesanan", "adm:ord")], PANEL))
+
+
+@router.callback_query(F.data == "adm:menuphoto")
+async def menu_photo(c: CallbackQuery, state: FSMContext):
+    source = "foto unggahan admin" if CUSTOM_MENU_PHOTO.exists() else "foto bawaan bot"
+    await state.set_state(A.menu_photo)
+    await show(c, f"📸 <b>FOTO MENU</b>\n\nSekarang memakai: <b>{source}</b>.\n\n"
+                  "Kirim foto baru (disarankan 16:9), atau kirim <code>-</code> untuk kembali ke foto bawaan.",
+              CANCEL)
+
+
+@router.message(A.menu_photo, F.photo)
+async def menu_photo_save(m: Message, state: FSMContext):
+    CUSTOM_MENU_PHOTO.parent.mkdir(parents=True, exist_ok=True)
+    await m.photo[-1].download(destination_file=str(CUSTOM_MENU_PHOTO))
+    await state.clear()
+    await m.answer("✅ Foto menu berhasil diperbarui. Menu berikutnya memakai foto ini.",
+                   reply_markup=kb(PANEL))
+
+
+@router.message(A.menu_photo)
+async def menu_photo_reset(m: Message, state: FSMContext):
+    if (m.text or "").strip() == "-":
+        CUSTOM_MENU_PHOTO.unlink(missing_ok=True)
+        await state.clear()
+        return await m.answer("✅ Kembali memakai foto bawaan.", reply_markup=kb(PANEL))
+    await m.answer("⚠️ Kirim foto atau tulis <code>-</code> untuk reset.")
 
 
 # ---------- user ----------
@@ -190,12 +359,30 @@ async def svc_detail(c: CallbackQuery):
     sid = int(c.data.split(":")[2])
     s = await db.q1("SELECT s.*, c.name cat FROM services s LEFT JOIN categories c ON c.id=s.category_id WHERE s.id=?", (sid,))
     if not s:
-        return await c.answer("Tidak ditemukan.", show_alert=True)
-    await show(c, f"📌 <b>#{s['id']} {esc(s['name'])}</b>\n\n├ Kategori : {esc(s['cat'] or '-')}\n"
-                  f"├ Harga/1K : <b>{rp(s['price_per_1k'])}</b>\n├ Min/Max : {s['min_qty']} / {s['max_qty']}\n"
-                  f"├ Status : {'✅ Aktif' if s['active'] else '⛔ Nonaktif'}\n└ {esc(s['description'] or '-')}",
-               kb([("🔁 On/Off", f"adm:svt:{sid}"), ("💲 Ubah Harga", f"adm:svp:{sid}")],
-                  [("🗑 Hapus", f"adm:svd:{sid}")], [("⬅️ Daftar", "adm:svc:0")]))
+        return await answer_cb(c, "Tidak ditemukan.", True)
+    lantai = await db.suggested_price(s["provider_price"]) if s["provider_price"] else 0
+    aman = not lantai or s["price_per_1k"] >= lantai
+    t = (f"📌 <b>#{s['id']} {esc(s['name'])}</b>\n\n├ Kategori : {esc(s['cat'] or '-')}\n"
+         f"├ ID Provider : <code>{s['provider_id'] or '-'}</code> • {esc(s['provider_type'])}\n"
+         f"├ 🔒 Modal provider : <b>{rp(s['provider_price'])}</b>/1K (rahasia)\n"
+         f"├ Harga jual : <b>{rp(await db.effective_price(s))}</b>/1K "
+         f"{'✅ aman' if aman else '⚠️ di bawah batas aman'}\n"
+         f"├ Harga otomatis : {'✅ ON' if s['auto_price'] else '🔒 Dikunci'}\n"
+         f"├ Min/Max : {s['min_qty']} / {s['max_qty']}\n"
+         f"├ Status : {'✅ Aktif' if s['active'] else '⛔ Nonaktif'}\n"
+         f"└ {esc(s['description'] or '-')}")
+    if not aman:
+        t += f"\n\n⚠️ Harga Anda di bawah batas aman {rp(lantai)}/1K. Sistem otomatis memakai harga tersebut."
+    await show(c, t, kb([("🔁 On/Off", f"adm:svt:{sid}"), ("💲 Ubah Harga", f"adm:svp:{sid}")],
+                        [("🤖 Auto Harga", f"adm:sva:{sid}"), ("🗑 Hapus", f"adm:svd:{sid}")],
+                        [("⬅️ Daftar", "adm:svc:0")]))
+
+
+@router.callback_query(F.data.startswith("adm:sva:"))
+async def svc_auto(c: CallbackQuery):
+    sid = int(c.data.split(":")[2])
+    await db.x("UPDATE services SET auto_price = 1 - auto_price WHERE id=?", (sid,))
+    await svc_detail(c)
 
 
 @router.callback_query(F.data.startswith("adm:svt:"))
@@ -225,17 +412,27 @@ async def svc_price_msg(m: Message, state: FSMContext):
     except ValueError:
         return await m.answer("⚠️ Angka tidak valid.")
     sid = (await state.get_data())["sid"]
-    await db.x("UPDATE services SET price_per_1k=? WHERE id=?", (p, sid))
+    s = await db.q1("SELECT * FROM services WHERE id=?", (sid,))
+    if not s:
+        return await m.answer("⚠️ Layanan tidak ditemukan.")
+    lantai = await db.suggested_price(s["provider_price"]) if s["provider_price"] else 0
+    final = max(p, lantai)
+    await db.x("UPDATE services SET price_per_1k=?, auto_price=0 WHERE id=?", (final, sid))
     await state.clear()
-    await m.answer(f"✅ Harga layanan #{sid} jadi {rp(p)}/1K.", reply_markup=kb([("⬅️ Layanan", "adm:svc:0")]))
+    msg = f"✅ Harga layanan #{sid} jadi {rp(final)}/1K (kunci manual)."
+    if final > p:
+        msg += f"\n⚠️ Dinaikkan ke batas aman {rp(lantai)} agar tidak rugi."
+    await m.answer(msg, reply_markup=kb([("⬅️ Layanan", "adm:svc:0")]))
 
 
 @router.callback_query(F.data == "adm:svadd")
 async def svc_add(c: CallbackQuery, state: FSMContext):
     await prompt(c, state, A.svc_add,
                  "➕ <b>Tambah layanan</b> — satu baris per layanan:\n\n"
-                 "<code>Kategori | Nama | Harga per 1K | Min | Max | Deskripsi</code>\n\n"
-                 "Contoh:\n<code>Instagram | IG Followers Premium | 17000 | 100 | 10000 | Garansi 30 hari</code>")
+                 "<code>Kategori | Nama | Harga per 1K | Min | Max | Deskripsi | ID Provider | Tipe</code>\n\n"
+                 "ID Provider &amp; tipe opsional. Tipe: <code>default, package, custom_comment, mention_list, "
+                 "mention_hashtag, mention_follower, mention_media</code>.\n\n"
+                 "Contoh:\n<code>Instagram | IG Followers Premium | 17000 | 100 | 10000 | Garansi | 42 | default</code>")
 
 
 @router.message(A.svc_add)
@@ -247,8 +444,12 @@ async def svc_add_msg(m: Message, state: FSMContext):
         p = [x.strip() for x in line.split("|")]
         try:
             cid = await db.get_or_create_category(p[0])
-            await db.x("INSERT INTO services(category_id,name,price_per_1k,min_qty,max_qty,description) VALUES(?,?,?,?,?,?)",
-                       (cid, p[1], toint(p[2]), toint(p[3]), toint(p[4]), p[5] if len(p) > 5 else ""))
+            pid = toint(p[6]) if len(p) > 6 and p[6] else None
+            ptype = normalize_type(p[7]) if len(p) > 7 and p[7] else "default"
+            await db.x("INSERT INTO services(category_id,name,price_per_1k,min_qty,max_qty,description,"
+                       "provider_id,provider_type,source) VALUES(?,?,?,?,?,?,?,?,?)",
+                       (cid, p[1], toint(p[2]), toint(p[3]), toint(p[4]), p[5] if len(p) > 5 else "",
+                        pid, ptype, "provider" if pid else "manual"))
             ok += 1
         except (ValueError, IndexError):
             bad.append(line)

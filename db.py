@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime, timezone, timedelta
 
@@ -24,11 +25,17 @@ CREATE TABLE IF NOT EXISTS categories(
   id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, emoji TEXT DEFAULT '📁');
 CREATE TABLE IF NOT EXISTS services(
   id INTEGER PRIMARY KEY AUTOINCREMENT, category_id INTEGER, name TEXT,
-  price_per_1k INTEGER, min_qty INTEGER, max_qty INTEGER, description TEXT DEFAULT '', active INTEGER DEFAULT 1);
+  price_per_1k INTEGER, min_qty INTEGER, max_qty INTEGER, description TEXT DEFAULT '', active INTEGER DEFAULT 1,
+  provider_id INTEGER UNIQUE, provider_type TEXT DEFAULT 'default',
+  provider_price INTEGER DEFAULT 0, provider_min INTEGER DEFAULT 0, provider_max INTEGER DEFAULT 0,
+  provider_refill INTEGER DEFAULT 0, provider_avg TEXT DEFAULT '', auto_price INTEGER DEFAULT 1,
+  synced_at TEXT, source TEXT DEFAULT 'manual');
 CREATE TABLE IF NOT EXISTS orders(
   id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, service_id INTEGER, service_name TEXT,
   link TEXT, quantity INTEGER, price INTEGER, status TEXT DEFAULT 'Pending',
-  provider_order_id TEXT, created_at TEXT);
+  provider_order_id TEXT, created_at TEXT,
+  provider_id INTEGER, provider_type TEXT DEFAULT 'default', extra TEXT DEFAULT '',
+  refill_id TEXT, refill_status TEXT, checked_at TEXT);
 CREATE TABLE IF NOT EXISTS deposits(
   id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, amount INTEGER, method TEXT,
   ref TEXT, status TEXT DEFAULT 'pending', created_at TEXT);
@@ -57,7 +64,33 @@ DEFAULT_SETTINGS = {
     "ref_signup_bonus": "500",
     "min_deposit": "10000",
     "announcement": "",
+    "markup_percent": "35",   # margin minimum atas modal provider
+    "markup_flat": "0",       # margin tetap (Rp) per 1000
+    "auto_sync": "1",         # tarik layanan otomatis saat bot start
+    "service_fav": "0",       # hanya ambil layanan favorit provider
 }
+
+SERVICE_COLUMNS = {
+    "provider_id": "INTEGER", "provider_type": "TEXT DEFAULT 'default'",
+    "provider_price": "INTEGER DEFAULT 0", "provider_min": "INTEGER DEFAULT 0",
+    "provider_max": "INTEGER DEFAULT 0", "provider_refill": "INTEGER DEFAULT 0",
+    "provider_avg": "TEXT DEFAULT ''", "auto_price": "INTEGER DEFAULT 1",
+    "synced_at": "TEXT", "source": "TEXT DEFAULT 'manual'",
+}
+ORDER_COLUMNS = {
+    "provider_id": "INTEGER", "provider_type": "TEXT DEFAULT 'default'",
+    "extra": "TEXT DEFAULT ''", "refill_id": "TEXT", "refill_status": "TEXT",
+    "checked_at": "TEXT",
+}
+
+
+async def _migrate():
+    """Tambah kolom baru ke database lama tanpa menghapus data."""
+    for table, columns in (("services", SERVICE_COLUMNS), ("orders", ORDER_COLUMNS)):
+        have = {r["name"] for r in await q(f"PRAGMA table_info({table})")}
+        for col, decl in columns.items():
+            if col not in have:
+                await x(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
 
 async def init(path: str):
@@ -68,6 +101,7 @@ async def init(path: str):
     await _db.execute("PRAGMA journal_mode=WAL")
     await _db.executescript(SCHEMA)
     await _db.commit()
+    await _migrate()
     await _seed()
 
 
@@ -164,6 +198,67 @@ async def get_or_create_category(name: str) -> int:
     return c.lastrowid
 
 
+# ---------- harga / sinkronisasi provider ----------
+def hitung_harga(modal: int, persen: int, flat: int = 0) -> int:
+    """Harga jual minimal agar tidak rugi. Modal provider tidak pernah ditampilkan ke user."""
+    if modal <= 0:
+        return 0
+    return -(-modal * (100 + max(0, persen)) // 100) + max(0, flat)
+
+
+async def suggested_price(modal: int) -> int:
+    pct = int(await setting("markup_percent") or 0)
+    flat = int(await setting("markup_flat") or 0)
+    return hitung_harga(modal, pct, flat)
+
+
+async def effective_price(svc) -> int:
+    """Harga yang benar-benar dipakai user: tidak pernah di bawah modal + margin."""
+    base = int(svc["price_per_1k"] or 0)
+    if not svc["provider_price"]:
+        return base
+    return max(base, await suggested_price(int(svc["provider_price"])))
+
+
+async def sync_services(items: list[dict]) -> dict:
+    """Upsert layanan provider ke database. Harga hanya naik, tidak pernah turun otomatis."""
+    added = updated = 0
+    for it in items:
+        pid = int(it["id"])
+        modal = max(0, int(it.get("price") or 0))
+        name = str(it.get("name") or f"Layanan {pid}")
+        ptype = str(it.get("type") or "default")
+        category = str(it.get("category") or "Lainnya")
+        mn = max(0, int(it.get("min") or 0))
+        mx = max(mn, int(it.get("max") or mn))
+        desc = str(it.get("description") or "")
+        refill = int(it.get("refill") or 0)
+        avg = str(it.get("average_time") or "")
+        cid = await get_or_create_category(category)
+        cur = await q1("SELECT * FROM services WHERE provider_id=?", (pid,))
+        now_at = now()
+        if cur:
+            price = cur["price_per_1k"]
+            if cur["auto_price"]:
+                price = max(price, await suggested_price(modal))
+            await x("UPDATE services SET name=?,category_id=?,provider_type=?,provider_price=?,provider_min=?,"
+                    "provider_max=?,provider_refill=?,provider_avg=?,description=?,min_qty=?,max_qty=?,"
+                    "price_per_1k=?,synced_at=?,source='provider' WHERE id=?",
+                    (name, cid, ptype, modal, mn, mx, refill, avg, desc, mn, mx, price, now_at, cur["id"]))
+            updated += 1
+        else:
+            price = await suggested_price(modal) or 1000
+            await x("INSERT INTO services(category_id,name,price_per_1k,min_qty,max_qty,description,active,"
+                    "provider_id,provider_type,provider_price,provider_min,provider_max,provider_refill,"
+                    "provider_avg,auto_price,synced_at,source) VALUES(?,?,?,?,?,?,1,?,?,?,?,?,?,?,1,?,'provider')",
+                    (cid, name, price, mn, mx, desc, pid, ptype, modal, mn, mx, refill, avg, now_at))
+            added += 1
+    # Layanan demo lama tidak ikut tampil setelah katalog asli masuk.
+    if items:
+        await x("UPDATE services SET active=0 WHERE source='manual' AND name LIKE '%[Demo]%'")
+    return dict(added=added, updated=updated, total=len(items))
+
+
 # ---------- users ----------
 async def upsert_user(uid, name, username) -> bool:
     if await q1("SELECT 1 FROM users WHERE id=?", (uid,)):
@@ -236,11 +331,15 @@ async def confirm_deposit(dep_id):
 
 
 # ---------- orders ----------
-async def create_order(uid, svc, link, qty, price):
-    if not await debit(uid, price, "order", f"Order {svc['name']} x{qty}"):
+async def create_order(uid, svc, link, qty, price, extra=None):
+    extra_json = json.dumps(extra or {}, ensure_ascii=False)
+    note = f"Order {svc['name']}" + (f" x{qty}" if qty else "")
+    if not await debit(uid, price, "order", note):
         return None
-    c = await x("INSERT INTO orders(user_id,service_id,service_name,link,quantity,price,created_at) VALUES(?,?,?,?,?,?,?)",
-                (uid, svc["id"], svc["name"], link, qty, price, now()))
+    c = await x("INSERT INTO orders(user_id,service_id,service_name,link,quantity,price,created_at,"
+                "provider_id,provider_type,extra) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (uid, svc["id"], svc["name"], link, qty, price, now(),
+                 svc["provider_id"], svc["provider_type"], extra_json))
     await x("UPDATE users SET total_order=total_order+1, total_spent=total_spent+? WHERE id=?", (price, uid))
     return c.lastrowid
 

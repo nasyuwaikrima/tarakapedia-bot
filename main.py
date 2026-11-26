@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 
 from aiogram import BaseMiddleware, Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -40,21 +41,57 @@ class Guard(BaseMiddleware):
         return await handler(event, data)
 
 
+async def sync_catalog() -> int:
+    if not provider.configured or await db.setting("auto_sync") != "1":
+        return 0
+    fav = await db.setting("service_fav") == "1"
+    items = await provider.services(service_fav=fav)
+    result = await db.sync_services(items)
+    return result["total"]
+
+
 async def worker(bot: Bot):
-    """Sinkronisasi status order dengan provider tiap 20 detik."""
+    """Sinkronisasi status order & refill dengan provider, plus refresh katalog."""
+    last_sync = time.monotonic()
     while True:
         try:
-            for o in await db.q("SELECT * FROM orders WHERE status IN ('Pending','Processing')"):
-                st = await provider.status(o)
-                if st == o["status"]:
-                    continue
-                c = await db.x("UPDATE orders SET status=? WHERE id=? AND status=?", (st, o["id"], o["status"]))
-                if c.rowcount and st == "Completed":
+            if provider.configured:
+                active = await db.q("SELECT * FROM orders WHERE status IN ('Pending','Processing') "
+                                    "AND provider_order_id IS NOT NULL AND provider_order_id!=''")
+                ids = list(dict.fromkeys(o["provider_order_id"] for o in active))
+                for i in range(0, len(ids), 50):
+                    states = await provider.order_status(ids[i:i + 50])
+                    for o in active:
+                        st = states.get(str(o["provider_order_id"]))
+                        if not st or st == o["status"]:
+                            continue
+                        c = await db.x("UPDATE orders SET status=?, checked_at=? WHERE id=? AND status=?",
+                                       (st, db.now(), o["id"], o["status"]))
+                        if c.rowcount and st == "Completed":
+                            try:
+                                await bot.send_message(o["user_id"], f"✅ Pesanan <code>#{o['id']}</code> "
+                                                                     f"({ui.esc(o['service_name'])}) telah selesai!")
+                            except Exception:
+                                pass
+
+                refills = await db.q("SELECT * FROM orders WHERE refill_id IS NOT NULL "
+                                     "AND refill_status NOT IN ('Completed','Canceled')")
+                for r in refills:
+                    st = await provider.refill_status(r["refill_id"])
+                    if st == r["refill_status"]:
+                        continue
+                    await db.x("UPDATE orders SET refill_status=?, checked_at=? WHERE id=?",
+                               (st, db.now(), r["id"]))
                     try:
-                        await bot.send_message(o["user_id"], f"✅ Pesanan <code>#{o['id']}</code> "
-                                                             f"({ui.esc(o['service_name'])}) telah <b>selesai</b>!")
+                        await bot.send_message(r["user_id"], f"🔁 Refill order <code>#{r['id']}</code>: <b>{ui.esc(st)}</b>")
                     except Exception:
                         pass
+
+                if time.monotonic() - last_sync > 1800:
+                    n = await sync_catalog()
+                    if n:
+                        log.info("Katalog provider disinkronisasi: %d layanan", n)
+                    last_sync = time.monotonic()
         except Exception:
             log.exception("worker error")
         await asyncio.sleep(20)
@@ -71,6 +108,14 @@ async def main():
     dp.callback_query.outer_middleware(Guard())
     dp.include_router(admin.router)
     dp.include_router(user.router)  # user paling akhir (ada fallback)
+    if provider.configured:
+        try:
+            n = await sync_catalog()
+            log.info("Sinkron awal katalog: %d layanan", n)
+        except Exception:
+            log.warning("Gagal sinkron katalog saat start", exc_info=True)
+    else:
+        log.warning("Kredensial MedanPedia kosong — order real akan ditolak sampai .env diisi")
     me = await bot.me()
     log.info("Bot @%s berjalan", me.username)
     task = asyncio.create_task(worker(bot))
@@ -78,6 +123,7 @@ async def main():
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         task.cancel()
+        await provider.close()
         await db.close()
 
 
