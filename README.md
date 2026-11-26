@@ -34,11 +34,12 @@ Bot SMM panel berbasis Telegram dengan **order real ke API MedanPedia**, katalog
 - ✅ **Refill** `/refill` dan `/refill_status` bisa diajukan admin maupun user (untuk layanan bergaransi).
 - ✅ **Harga dikelola admin**: margin global, harga manual per layanan, kunci harga, dan batas bawah harga agar tidak pernah rugi.
 - ✅ **Modal provider disembunyikan** dari semua tampilan user. User hanya melihat harga jual.
-- ✅ Menu utama dikirim sebagai **foto + caption** yang rapi; foto bisa diganti admin lewat panel.
+- ✅ Menu utama dikirim sebagai **foto + caption** yang rapi; foto bisa diganti admin lewat panel. Tombol back/menu/invoice **mengedit pesan yang sama**, jadi tidak spam chat.
 - ✅ Kategori & layanan diurutkan **termurah → termahal** memakai harga jual efektif (modal + margin tidak pernah bocor).
 - ✅ Deposit **QRIS PixPayz real**: invoice dibuat otomatis, QRIS bisa dilihat ulang kapan saja lewat riwayat, status lunas dicek otomatis ke PixPayz tiap 20 detik (**tanpa webhook/domain**), invoice **tidak bisa dibatalkan**.
 - ✅ Batas **3 invoice aktif per user** (bisa diatur admin) — antrean deposit tetap terkendali.
-- ✅ **Wajib gabung 2 channel**: `@tarakapedia` (register) & `@tarakapedia_log` (log). Kalau keluar, bot menyuruh gabung lagi.
+- ✅ **Wajib gabung 2 channel**: `@tarakapedia` (register) & `@tarakapedia_log` (log). Berlaku juga untuk user lama; kalau keluar, bot menyuruh gabung lagi.
+- ✅ **Status register tersimpan** di database & tampil di profil/panel admin; perubahan status ikut dilog ke channel.
 - ✅ **Semua transaksi tampil di `@tarakapedia_log`**: deposit, order, refund, pembelian, misi, komisi referral, dan order selesai — biar calon user ikut tertarik.
 - ✅ Toko produk + stok, referral, misi, broadcast, backup DB, statistik.
 - ✅ Migrasi database otomatis: database lama tetap aman saat di-upgrade.
@@ -299,9 +300,11 @@ Bot **tidak menyediakan server webhook**. Seluruh konfirmasi deposit berasal dar
 - Deteksi pembayaran maksimal ~20 detik setelah status `paid` di PixPayz (atau langsung saat tombol 🔄 Cek Status ditekan).
 
 ### Channel register & log transaksi
-- `@tarakapedia` = **channel register**. User wajib gabung sebelum bisa deposit/order. Kalau keluar, bot meminta gabung lagi lewat tombol khusus.
+- `@tarakapedia` = **channel register**. User wajib gabung sebelum bisa deposit/order — termasuk user yang sudah terdaftar sebelum fitur ini aktif. Kalau keluar, bot meminta gabung lagi lewat tombol khusus.
+- Status register (`joined` / `out` / `pending`) disimpan di tabel `users`, ditampilkan di **👤 Profil Saya** dan kartu user admin, serta dilog ke channel saat berubah.
 - `@tarakapedia_log` = **channel log**. Semua transaksi tampil di sini: invoice baru, deposit lunas, order baru/selesai, refund, pembelian app, klaim misi, komisi referral, dan penyesuaian saldo admin.
 - Mention user di log bisa diklik, jadi user lain gampang lihat aktivitas. Pengiriman log dibuat **best-effort**: kalau channel log error, transaksi user tetap berhasil.
+- Kalau status keanggotaan gagal dibaca, bot memakai status `joined` terakhir (maks 24 jam). Kalau tidak ada, user tetap diminta gabung — jangan lupa jadikan bot admin di kedua channel.
 
 ### Lainnya
 - **Produk app**: admin menambah produk & stok; pembelian otomatis mengirim data stok ke user.
