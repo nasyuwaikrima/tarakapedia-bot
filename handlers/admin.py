@@ -668,7 +668,8 @@ async def msn_add_msg(m: Message, state: FSMContext):
 
 
 # ---------- pengaturan ----------
-SET_LABELS = {"ref_percent": "Komisi referral (% margin, max 50)", "ref_signup_bonus": "Bonus daftar referral (Rp, 0=off)",
+SET_LABELS = {"ref_percent": "Komisi referral (% margin, max 50)", "ref_days": "Masa komisi referral (hari, 0=tanpa batas)",
+              "ref_signup_bonus": "Bonus daftar referral (Rp, 0=off)",
               "min_deposit": "Minimal deposit (Rp)", "max_active_deposit": "Batas invoice aktif per user",
               "announcement": "Pengumuman dashboard"}
 

@@ -606,12 +606,15 @@ async def referral(c: CallbackQuery):
     refs = await db.referral_count(u["id"])
     pct = min(50, max(0, int(await db.setting("ref_percent") or 0)))
     bonus = int(await db.setting("ref_signup_bonus") or 0)
+    days = max(0, int(await db.setting("ref_days") or 0))
+    masa = f"{days} hari" if days else "tanpa batas"
     link = f"https://t.me/{me.username}?start=ref_{u['id']}"
     await show(c, f"{LINE}\n🎁 <b>PROGRAM REFERRAL</b>\n{LINE}\n\n"
                   f"Ajak teman &amp; dapatkan:\n"
                   f"├ Bonus daftar : <b>{rp(bonus)}</b>{' (nonaktif)' if bonus <= 0 else ''}\n"
                   f"└ Komisi order : <b>{pct}%</b> setelah order teman selesai\n\n"
-                  f"💡 Komisi dihitung dari keuntungan order, jadi tetap aman &amp; saling menguntungkan.\n\n"
+                  f"⏳ Komisi berlaku <b>{masa}</b> sejak teman gabung lewat link Anda. "
+                  f"Dihitung dari keuntungan order, jadi tetap aman &amp; saling menguntungkan.\n\n"
                   f"🔗 Link Anda:\n<code>{link}</code>\n\n"
                   f"📈 Teman diundang : <b>{refs}</b>\n💰 Total pendapatan : <b>{rp(u['ref_earned'])}</b>",
                kb([("📤 Bagikan Link", f"https://t.me/share/url?url={link}&text=Order%20sosmed%20murah%20di%20{BOT_NAME}")], BACK))

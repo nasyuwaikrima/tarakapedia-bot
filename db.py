@@ -21,7 +21,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS users(
   id INTEGER PRIMARY KEY, name TEXT, username TEXT,
   balance INTEGER DEFAULT 0, total_order INTEGER DEFAULT 0, total_spent INTEGER DEFAULT 0,
-  banned INTEGER DEFAULT 0, referred_by INTEGER, ref_earned INTEGER DEFAULT 0, joined_at TEXT,
+  banned INTEGER DEFAULT 0, referred_by INTEGER, referred_at TEXT,
+  ref_earned INTEGER DEFAULT 0, joined_at TEXT,
   channel_status TEXT DEFAULT 'pending', channel_checked_at TEXT, channel_joined_at TEXT);
 CREATE TABLE IF NOT EXISTS categories(
   id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, emoji TEXT DEFAULT '📁');
@@ -67,6 +68,7 @@ CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id);
 DEFAULT_SETTINGS = {
     "maintenance": "0",
     "ref_percent": "20",     # % dari margin order yang sukses, bukan dari deposit
+    "ref_days": "7",          # komisi hanya untuk order dalam N hari sejak teman daftar
     "ref_signup_bonus": "0", # default 0 supaya tidak rugi di awal (bisa diatur admin)
     "min_deposit": "10000",
     "announcement": "",
@@ -97,6 +99,7 @@ DEPOSIT_COLUMNS = {
 USER_COLUMNS = {
     "channel_status": "TEXT DEFAULT 'pending'",
     "channel_checked_at": "TEXT", "channel_joined_at": "TEXT",
+    "referred_at": "TEXT",
 }
 
 
@@ -353,7 +356,8 @@ async def debit(uid, amt, type_, note="") -> bool:
 async def set_referrer(uid, ref):
     if ref == uid or not await get_user(ref):
         return None
-    c = await x("UPDATE users SET referred_by=? WHERE id=? AND referred_by IS NULL", (ref, uid))
+    c = await x("UPDATE users SET referred_by=?, referred_at=? WHERE id=? AND referred_by IS NULL",
+                (ref, now(), uid))
     if c.rowcount == 0:
         return None
     bonus = int(await setting("ref_signup_bonus") or 0)
@@ -479,6 +483,17 @@ async def pay_order_referral(oid):
         return 0, None
     u = await get_user(o["user_id"])
     ref = u["referred_by"] if u else None
+    days = max(0, int(await setting("ref_days") or 0))
+    if ref and days:
+        # DB lama belum punya referred_at → awal masa komisi pakai tanggal join.
+        start = u["referred_at"] or u["joined_at"]
+        try:
+            joined = datetime.strptime(start, "%Y-%m-%d %H:%M:%S").replace(tzinfo=WIB)
+            placed = datetime.strptime(o["created_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=WIB)
+        except (TypeError, ValueError):
+            return 0, None
+        if placed < joined or (placed - joined).days >= days:
+            return 0, None
     modal = int(o["provider_price"] or 0)
     if not modal and o["service_id"]:
         s = await q1("SELECT provider_price FROM services WHERE id=?", (o["service_id"],))
