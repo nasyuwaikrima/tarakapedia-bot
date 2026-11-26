@@ -6,8 +6,8 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import db
-from config import (ADMIN_CONTACT_URL, ADMIN_IDS, BOT_NAME, CUSTOM_MENU_PHOTO,
-                    MENU_PHOTO, WEBSITE_URL)
+from config import (ADMIN_CONTACT_URL, ADMIN_IDS, BOT_NAME, CHANNEL_LOG,
+                    CHANNEL_REGISTRY_URL, CUSTOM_MENU_PHOTO, MENU_PHOTO, WEBSITE_URL)
 
 START = time.time()
 esc = html.escape
@@ -24,6 +24,23 @@ def rp(n) -> str:
 
 def num(n) -> str:
     return f"{int(n):,}".replace(",", ".")
+
+
+def user_link(uid: int, name: str | None = None, username: str | None = None) -> str:
+    """Mention user yang bisa diklik di channel log."""
+    label = name or (f"@{username}" if username else f"ID {uid}")
+    return f'<a href="tg://user?id={int(uid)}">{esc(label)[:60]}</a>'
+
+
+async def log_channel(bot, text: str):
+    """Kirim log transaksi ke channel. Gagal kirim tidak boleh menggagalkan transaksi."""
+    if not CHANNEL_LOG:
+        return
+    footer = f"\n\n🔗 Gabung: {CHANNEL_REGISTRY_URL}" if CHANNEL_REGISTRY_URL else ""
+    try:
+        await bot.send_message(CHANNEL_LOG, text + footer, disable_web_page_preview=True)
+    except Exception:
+        pass
 
 
 def bar(v, t, w=10) -> str:
@@ -144,12 +161,17 @@ async def deposit_paid_notice(bot, result):
                                reply_markup=kb([("🛒 Order Layanan", "ord")], BACK))
     except Exception:
         pass
+    who = user_link(d["user_id"], u["name"] if u else None, u["username"] if u else None)
     if ref:
         try:
             await bot.send_message(ref, f"💸 Komisi referral <b>{rp(bonus)}</b> dari deposit downline Anda.")
         except Exception:
             pass
+        await log_channel(bot, f"🎁 Komisi referral <b>{rp(bonus)}</b> → <code>{ref}</code> "
+                               f"dari deposit {who}")
     await notify_admins(bot, f"💰 Deposit QRIS #{d['id']} dari <code>{d['user_id']}</code>: {rp(d['amount'])}")
+    await log_channel(bot, f"✅ <b>DEPOSIT LUNAS</b> #{d['id']}\n👤 {who}\n💰 {rp(d['amount'])}\n"
+                           f"🏦 Saldo sekarang: <b>{rp(u['balance'] if u else 0)}</b>")
 
 
 async def notify_admins(bot, text: str):

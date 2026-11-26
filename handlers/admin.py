@@ -319,6 +319,8 @@ async def bal_msg(m: Message, state: FSMContext):
         if not await db.debit(uid, amt, "admin", "Penyesuaian admin"):
             return await m.answer("⚠️ Saldo user tidak cukup.")
     await state.clear()
+    await ui.log_channel(m.bot, f"🛠 <b>PENYESUAIAN SALDO</b>\n👤 {ui.user_link(uid)}\n"
+                                f"{'➕' if sign == '+' else '➖'} {rp(amt)} oleh admin")
     try:
         await m.bot.send_message(uid, f"🛠 Saldo Anda {'bertambah' if sign == '+' else 'berkurang'} <b>{rp(amt)}</b> oleh admin.")
     except Exception:

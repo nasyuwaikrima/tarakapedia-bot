@@ -164,6 +164,10 @@ async def _make_deposit(ev, uid: int, amount: int):
         return await show(ev, f"⚠️ Gagal membuat invoice QRIS: {esc(str(e)[:160])}",
                           kb([("🔄 Coba Lagi", "dep")], BACK))
     did = await db.create_deposit(uid, amount, gateway.name, info["ref"], info)
+    u = await db.get_user(uid)
+    await ui.log_channel(ev.bot, f"🧾 <b>INVOICE BARU</b> #{did}\n"
+                                 f"👤 {ui.user_link(uid, u['name'] if u else None, u['username'] if u else None)}\n"
+                                 f"💰 {rp(amount)} • QRIS PixPayz")
     await _show_invoice(ev, did)
 
 
@@ -450,6 +454,8 @@ async def ord_ok(c: CallbackQuery, state: FSMContext):
                                    ptype=s["provider_type"], **extra)
     except Exception as e:
         await db.cancel_order(oid)
+        await ui.log_channel(c.bot, f"↩️ <b>REFUND ORDER</b> #{oid}\n"
+                                    f"👤 {ui.user_link(c.from_user.id)}\n💸 {rp(price)} dikembalikan • provider gagal")
         return await show(c, f"⚠️ Provider gagal: {esc(str(e)[:150])}.\nSaldo Anda dikembalikan.", kb(BACK))
     await db.x("UPDATE orders SET provider_order_id=? WHERE id=?", (pid, oid))
     u = await db.get_user(c.from_user.id)
@@ -459,6 +465,9 @@ async def ord_ok(c: CallbackQuery, state: FSMContext):
                   f"└ Sisa Saldo : <b>{rp(u['balance'])}</b>", kb([("📦 Pesanan Saya", "myord")], BACK))
     await ui.notify_admins(c.bot, f"🛒 Order baru <code>#{oid}</code> dari <code>{c.from_user.id}</code>\n"
                                   f"{esc(s['name'])} • {rp(price)} • provider <code>{esc(pid)}</code>")
+    await ui.log_channel(c.bot, f"🛒 <b>ORDER BARU</b> #{oid}\n"
+                                f"👤 {ui.user_link(c.from_user.id, u['name'] if u else None, u['username'] if u else None)}\n"
+                                f"📦 {esc(s['name'])} • 💸 {rp(price)}\n🔖 Provider: <code>{esc(pid)}</code>")
 
 
 # ---------- toko aplikasi ----------
@@ -497,6 +506,9 @@ async def shop_buy(c: CallbackQuery):
                   f"🔐 <b>Data produk:</b>\n<code>{esc(data)}</code>\n\nSisa saldo: <b>{rp(u['balance'])}</b>",
                kb([("📱 Toko", "shop")], BACK))
     await ui.notify_admins(c.bot, f"📱 Pembelian <b>{esc(p['name'])}</b> oleh <code>{c.from_user.id}</code> ({rp(p['price'])})")
+    await ui.log_channel(c.bot, f"📱 <b>PEMBELIAN</b>\n"
+                                f"👤 {ui.user_link(c.from_user.id, u['name'] if u else None, u['username'] if u else None)}\n"
+                                f"📦 {esc(p['name'])} • 💸 {rp(p['price'])}")
 
 
 @router.callback_query(F.data == "shop:my")
@@ -630,6 +642,8 @@ async def claim(c: CallbackQuery):
         await c.answer(info, show_alert=True)
     else:
         await c.answer(f"🎉 +{rp(reward)} masuk ke saldo!", show_alert=True)
+        await ui.log_channel(c.bot, f"🎯 <b>MISI DIKLAIM</b>\n👤 {ui.user_link(c.from_user.id)}\n"
+                                    f"🏆 {esc(info)} • 💰 +{rp(reward)}")
     await missions(c)
 
 

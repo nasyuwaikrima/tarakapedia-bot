@@ -105,6 +105,9 @@ async def worker(bot: Bot):
                                                                      f"({ui.esc(o['service_name'])}) telah selesai!")
                             except Exception:
                                 pass
+                            await ui.log_channel(bot, f"✅ <b>ORDER SELESAI</b> #{o['id']}\n"
+                                                      f"👤 {ui.user_link(o['user_id'])}\n"
+                                                      f"📦 {ui.esc(o['service_name'])}")
 
                 refills = await db.q("SELECT * FROM orders WHERE refill_id IS NOT NULL "
                                      "AND refill_status NOT IN ('Completed','Canceled')")
