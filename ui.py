@@ -57,19 +57,27 @@ def kb(*rows):
 
 
 def main_kb(uid: int | None = None):
-    """Menu utama: alur deposit → order → cek hasil, semua tombol terkelompok."""
+    """Menu utama: baris 2 tombol & 1 tombol dirapatkan agar rapi di layar."""
     rows = [
         [("💰 Deposit QRIS", "dep"), ("🛒 Order Termurah", "ord")],
         [("📦 Pesanan Saya", "myord"), ("🧾 Riwayat", "hist")],
+        [("🏆 Top Transaksi", "top:all")],
+        [("🧩 Lainnya", "misc")],
+        [("📢 Channel Kami", CHANNEL_REGISTRY_URL), ("📜 Log Transaksi", CHANNEL_LOG_URL)],
+    ]
+    return kb(*rows)
+
+
+def misc_kb(uid: int | None = None):
+    """Menu lanjutan: toko, profil, referral, misi, website, admin."""
+    rows = [
         [("📱 Toko App", "shop"), ("👤 Profil Saya", "prof")],
         [("🎁 Kode Referral", "ref"), ("🎯 Misi Special", "msn")],
-        [("🏆 Top Transaksi", "top:all")],
-        [("📢 Channel Kami", CHANNEL_REGISTRY_URL), ("📜 Log Transaksi", CHANNEL_LOG_URL)],
         [("🌐 Website", WEBSITE_URL), ("💬 Hubungi Admin", ADMIN_CONTACT_URL)],
     ]
     if uid in ADMIN_IDS:
         rows.append([("🛠 Panel Admin", "adm")])
-    return kb(*rows)
+    return kb(*rows, BACK)
 
 
 def top_kb(active: str = "all"):

@@ -80,6 +80,13 @@ async def top_orders_cb(c: CallbackQuery):
     await show(c, f"{LINE}\n{block}\n\nUrutan dari total transaksi rupiah terbesar.", ui.top_kb(period))
 
 
+@router.callback_query(F.data == "misc")
+async def misc_cb(c: CallbackQuery):
+    await show(c, f"{LINE}\n🧩 <b>MENU LAINNYA</b>\n{LINE}\n\n"
+                  "Toko app, profil, referral, misi, website, dan admin ada di sini ya, kak.",
+               ui.misc_kb(c.from_user.id))
+
+
 @router.callback_query(F.data == "gate:check")
 async def gate_check(c: CallbackQuery, state: FSMContext):
     if await channels.gate(c, c.bot, state):
