@@ -1,12 +1,13 @@
 import math
 import re
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, ChatMemberUpdated, Message
 
+import channels
 import db
 import ui
 from config import BOT_NAME, MAX_ACTIVE_DEPOSITS
@@ -47,17 +48,40 @@ async def start(m: Message, command: CommandObject, state: FSMContext, is_new: b
                          f"💰 Bonus: <b>{rp(bonus)}</b>")
             except Exception:
                 pass
+    if await channels.gate(m, m.bot):
+        return
+    if is_new:
+        await ui.log_channel(m.bot, f"🆕 <b>MEMBER BARU</b>\n👤 {ui.user_link(m.from_user.id, m.from_user.full_name, m.from_user.username)}"
+                                  + (f"\n🎁 Ref: <code>{int(a[4:])}</code>" if a.startswith("ref_") and a[4:].isdigit() else ""))
     await _menu(m)
 
 
 @router.message(Command("menu"))
 async def menu_cmd(m: Message, state: FSMContext):
+    if await channels.gate(m, m.bot, state):
+        return
     await _menu(m, state)
 
 
 @router.callback_query(F.data == "menu")
 async def menu_cb(c: CallbackQuery, state: FSMContext):
+    if await channels.gate(c, c.bot, state):
+        return
     await _menu(c, state)
+
+
+@router.callback_query(F.data == "gate:check")
+async def gate_check(c: CallbackQuery, state: FSMContext):
+    if await channels.gate(c, c.bot, state):
+        await ui.answer_cb(c, "Kak, masih belum gabung ke channel yang ditandai ❌ ya.", True)
+        return
+    await ui.answer_cb(c, "✅ Terima kasih! Semua channel sudah terhubung.")
+    await _menu(c, state)
+
+
+@router.chat_member()
+async def channel_left(ev: ChatMemberUpdated, bot: Bot):
+    await channels.on_leave(ev, bot)
 
 
 # ---------- deposit QRIS ----------

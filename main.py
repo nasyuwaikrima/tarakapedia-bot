@@ -8,6 +8,7 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import CallbackQuery
 
+import channels
 import db
 import ui
 from config import ADMIN_IDS, BOT_TOKEN, DB_PATH, PIXPAYZ_POLL_SECONDS
@@ -137,6 +138,8 @@ async def main():
     dp = Dispatcher(storage=MemoryStorage())
     dp.message.outer_middleware(Guard())
     dp.callback_query.outer_middleware(Guard())
+    dp.message.outer_middleware(channels.GateMiddleware())
+    dp.callback_query.outer_middleware(channels.GateMiddleware())
     dp.include_router(admin.router)
     dp.include_router(user.router)  # user paling akhir (ada fallback)
     if provider.configured:
