@@ -1,5 +1,7 @@
 import asyncio
 import html
+import logging
+import os
 import re
 import time
 
@@ -12,6 +14,8 @@ import logcard
 from config import (ADMIN_CONTACT_URL, ADMIN_IDS, BOT_NAME, CHANNEL_LOG, CHANNEL_LOG_URL,
                     CHANNEL_REGISTRY_URL, CUSTOM_MENU_PHOTO, MENU_PHOTO, WEBSITE_URL)
 
+log = logging.getLogger("tarakapedia.ui")
+BOT_URL = f"https://t.me/{os.getenv('BOT_USERNAME', 'tarakapedia_bot').strip().lstrip('@')}"
 START = time.time()
 esc = html.escape
 LINE = "━━━━━━━━━━━━━━━━━━━━"
@@ -54,6 +58,15 @@ def user_link(uid: int, name: str | None = None, username: str | None = None) ->
     return f'<a href="tg://user?id={int(uid)}">{esc(label)[:60]}</a>'
 
 
+def channel_markup():
+    """Tombol di setiap log channel: langsung membuka bot & channel register."""
+    rows = [[("🛒 Lihat Layanan", f"{BOT_URL}?start=layanan"),
+             ("💰 Deposit", f"{BOT_URL}?start=deposit")]]
+    if CHANNEL_REGISTRY_URL:
+        rows.append([("📢 Channel Register", CHANNEL_REGISTRY_URL)])
+    return kb(*rows)
+
+
 async def log_channel(bot, text: str, card_title: str | None = None):
     """Kirim log transaksi ke channel sebagai kartu dashboard + caption.
 
@@ -65,14 +78,15 @@ async def log_channel(bot, text: str, card_title: str | None = None):
     caption = text + (f"\n\n🔗 Gabung: {CHANNEL_REGISTRY_URL}" if CHANNEL_REGISTRY_URL else "")
     try:
         await bot.send_photo(CHANNEL_LOG, photo=logcard.photo(text, card_title),
-                             caption=caption[:1000], disable_web_page_preview=True)
+                             caption=caption[:1000], reply_markup=channel_markup())
         return
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("Gagal kirim kartu log ke channel: %s", e)
     try:
-        await bot.send_message(CHANNEL_LOG, caption, disable_web_page_preview=True)
-    except Exception:
-        pass
+        await bot.send_message(CHANNEL_LOG, caption, reply_markup=channel_markup(),
+                               disable_web_page_preview=True)
+    except Exception as e:
+        log.warning("Gagal kirim log teks ke channel: %s", e)
 
 
 async def welcome_card(ev, name: str, caption: str, markup=None):
@@ -81,12 +95,12 @@ async def welcome_card(ev, name: str, caption: str, markup=None):
         await ev.answer_photo(photo=logcard.welcome_photo(name), caption=caption[:1000],
                               reply_markup=markup)
         return
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("Gagal kirim kartu welcome: %s", e)
     try:
         await ev.answer(caption, reply_markup=markup, disable_web_page_preview=True)
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("Gagal kirim welcome teks: %s", e)
 
 
 def bar(v, t, w=10) -> str:

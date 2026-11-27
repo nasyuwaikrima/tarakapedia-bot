@@ -79,7 +79,8 @@ def panel_kb():
         [("🎯 Misi", "adm:msn"), ("⚙️ Pengaturan", "adm:set")],
         [("🌐 Provider API", "adm:api"), ("📸 Foto Menu", "adm:menuphoto")],
         [("📢 Broadcast", "adm:bc"), ("💾 Backup DB", "adm:bak")],
-        [("🧪 Uji Notifikasi", "adm:testlog")],  # TEMP: hapus setelah pengetesan
+        [("🧪 Uji Notifikasi", "adm:testlog"),  # TEMP: hapus setelah pengetesan
+         ("🧪 Uji Welcome", "adm:testwelcome")],
         [("⬅️ Menu Utama", "menu")],
     )
 
@@ -854,6 +855,20 @@ async def testlog_cb(c: CallbackQuery):
                                        c.from_user.full_name, c.from_user.username)
     await c.message.answer(f"✅ Uji selesai.\nKartu log: terkirim\nNotifikasi: {ok} user • {fail} gagal",
                            reply_markup=panel_kb())
+
+
+@router.callback_query(F.data == "adm:testwelcome")
+async def testwelcome_cb(c: CallbackQuery):
+    """TEMP: lihat kartu welcome persis seperti yang diterima user baru."""
+    await c.answer("Mengirim kartu welcome uji...")
+    name = c.from_user.full_name or "Pengguna"
+    caption = (f"🎉 <b>Selamat datang, {esc(name)}!</b>\n\n"
+               "Pratinjau kartu sambutan untuk user baru.\n\n"
+               "🔒 <b>WAJIB GABUNG 2 CHANNEL</b>\n"
+               f"📢 @tarakapedia\n📜 @tarakapedia_log\n\n"
+               "Silakan bergabung, lalu tekan tombol di bawah.")
+    markup = kb([("✅ Saya sudah gabung", "gate:check")])
+    await ui.welcome_card(c.message, name, caption, markup)
 
 
 # ---------- broadcast ----------

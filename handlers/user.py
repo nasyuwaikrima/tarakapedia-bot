@@ -54,6 +54,12 @@ async def start(m: Message, command: CommandObject, state: FSMContext, is_new: b
     if is_new:
         await ui.log_channel(m.bot, f"🆕 <b>MEMBER BARU</b>\n👤 {ui.user_link(m.from_user.id, m.from_user.full_name, m.from_user.username)}"
                                   + (f"\n🎁 Ref: <code>{int(a[4:])}</code>" if a.startswith("ref_") and a[4:].isdigit() else ""))
+    if a == "layanan":
+        return await layanan_cmd(m, state)
+    if a == "deposit":
+        return await deposit_cmd(m, state)
+    if a == "pesanan":
+        return await pesanan_cmd(m)
     await _menu(m)
 
 
