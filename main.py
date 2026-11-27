@@ -118,9 +118,11 @@ async def worker(bot: Bot):
                             except Exception:
                                 pass
                             buyer = await db.get_user(o["user_id"])
-                            await ui.log_channel(bot, f"✅ <b>ORDER SELESAI</b> #{o['id']}\n"
-                                                      f"👤 {ui.public_user(o['user_id'], buyer['name'] if buyer else None, buyer['username'] if buyer else None)}\n"
-                                                      f"📦 {ui.esc(o['service_name'])}")
+                            await ui.log_channel(bot, ui.tree([
+                                ("👤 User", ui.public_user(o['user_id'], buyer['name'] if buyer else None, buyer['username'] if buyer else None)),
+                                ("📦 Layanan", ui.esc(o['service_name'])),
+                                ("🔒 Status", "Selesai"),
+                            ], head=f"✅ <b>ORDER SELESAI</b> #{o['id']}"))
 
                 refills = await db.q("SELECT * FROM orders WHERE refill_id IS NOT NULL "
                                      "AND refill_status NOT IN ('Completed','Canceled')")

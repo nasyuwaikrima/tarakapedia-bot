@@ -14,7 +14,7 @@ import ui
 from config import ADMIN_IDS, BOT_NAME, MAX_ACTIVE_DEPOSITS
 from payments import gateway
 from providers import LABEL_FIELDS, needs_quantity, provider, type_fields
-from ui import BACK, LINE, answer_cb, esc, kb, rp, show
+from ui import BACK, answer_cb, esc, kb, rp, show, tree
 
 router = Router()
 
@@ -127,7 +127,7 @@ async def _top_board(ev, period: str):
     if period not in ("all", "week", "month"):
         period = "all"
     block = await ui.top_spender_block(10, period)
-    await show(ev, f"{LINE}\n{block}\n\nUrutan dari total transaksi rupiah terbesar.", ui.top_kb(period))
+    await show(ev, f"{block}\n\n<i>Urutan dari total transaksi rupiah terbesar.</i>", ui.top_kb(period))
 
 
 @router.message(Command("top"))
@@ -142,9 +142,11 @@ async def top_orders_cb(c: CallbackQuery):
 
 @router.callback_query(F.data == "misc")
 async def misc_cb(c: CallbackQuery):
-    await show(c, f"{LINE}\n🧩 <b>MENU LAINNYA</b>\n{LINE}\n\n"
-                  "Toko aplikasi, profil, referral, misi, website, dan kontak admin tersedia di sini.",
-               ui.misc_kb(c.from_user.id))
+    await show(c, tree([
+        "📱 Toko aplikasi &amp; produk digital",
+        "👤 Profil, referral, dan misi",
+        "🌐 Website resmi &amp; kontak admin",
+    ], head="🧩 <b>MENU LAINNYA</b>"), ui.misc_kb(c.from_user.id))
 
 
 @router.callback_query(F.data == "gate:check")
@@ -181,11 +183,12 @@ async def dep_menu(c: CallbackQuery, state: FSMContext):
     await state.clear()
     limit, active = await _dep_limit(c.from_user.id)
     mn = int(await db.setting("min_deposit") or 0)
-    t = (f"{LINE}\n💰 <b>DEPOSIT SALDO</b>\n{LINE}\n\n"
-         f"┌ 💳 Metode : <b>QRIS PixPayz</b>\n"
-         f"├ 🔻 Minimal : <b>{rp(mn)}</b>\n"
-         f"├ 🧾 Invoice aktif : <b>{len(active)}/{limit}</b> {ui.bar(len(active), limit)}\n"
-         f"└ ⚡ Status dicek otomatis tiap 20 detik\n")
+    t = tree([
+        ("💳 Metode", "<b>QRIS PixPayz</b>"),
+        ("🔻 Minimal", f"<b>{rp(mn)}</b>"),
+        ("🧾 Invoice aktif", f"<b>{len(active)}/{limit}</b> {ui.bar(len(active), limit)}"),
+        ("⚡ Status", "Dicek otomatis tiap 20 detik"),
+    ], head="💰 <b>DEPOSIT SALDO</b>")
     rows = []
     if active:
         t += "\n🧾 <b>Invoice aktif</b> — ketuk untuk lihat QRIS / cek status:"
@@ -205,14 +208,15 @@ async def _show_invoice(ev, did: int):
     d = await db.q1("SELECT * FROM deposits WHERE id=? AND user_id=?", (did, ev.from_user.id))
     if not d:
         return await answer_cb(ev, "Tagihan tidak ditemukan.", True)
-    caption = (f"{LINE}\n🧾 <b>INVOICE #{d['id']}</b>\n{LINE}\n\n"
-               f"💰 Nominal : <b>{rp(d['amount'])}</b>\n"
-               f"🕒 Status : <b>{_dep_status(d)}</b>\n"
-               f"🔖 Invoice : <code>{esc(d['invoice_id'] or d['ref'] or '-')}</code>\n"
-               f"📅 Dibuat : {esc(d['created_at'])} WIB\n"
-               f"⏳ Berlaku : {esc(d['expired_at'] or '-')}\n\n"
-               f"📌 Scan QRIS di bawah ini. Setelah bayar, saldo masuk otomatis maks ~20 detik — "
-               f"atau tekan 🔄 Cek Status sekarang.")
+    caption = tree([
+        ("💰 Nominal", f"<b>{rp(d['amount'])}</b>"),
+        ("🕒 Status", f"<b>{_dep_status(d)}</b>"),
+        ("🔖 Invoice", f"<code>{esc(d['invoice_id'] or d['ref'] or '-')}</code>"),
+        ("📅 Dibuat", f"{esc(d['created_at'])} WIB"),
+        ("⏳ Berlaku", esc(d['expired_at'] or '-')),
+    ], head=f"🧾 <b>INVOICE #{d['id']}</b>")
+    caption += ("\n\n📌 Scan QRIS di bawah ini. Setelah bayar, saldo masuk otomatis maks ~20 detik — "
+                "atau tekan 🔄 Cek Status sekarang.")
     rows = []
     if d["payment_link"]:
         rows.append([("🧾 Halaman Bayar", d["payment_link"])])
@@ -242,9 +246,11 @@ async def _make_deposit(ev, uid: int, amount: int):
                           kb([("🔄 Coba Lagi", "dep")], BACK))
     did = await db.create_deposit(uid, amount, gateway.name, info["ref"], info)
     u = await db.get_user(uid)
-    await ui.log_channel(ev.bot, f"🧾 <b>INVOICE BARU</b> #{did}\n"
-                                 f"👤 {ui.public_user(uid, u['name'] if u else None, u['username'] if u else None)}\n"
-                                 f"💰 {rp(amount)} • QRIS PixPayz")
+    await ui.log_channel(ev.bot, tree([
+        ("👤 User", ui.public_user(uid, u['name'] if u else None, u['username'] if u else None)),
+        ("💰 Nominal", rp(amount)),
+        ("💳 Metode", "QRIS PixPayz"),
+    ], head=f"🧾 <b>INVOICE BARU</b> #{did}"))
     await _show_invoice(ev, did)
 
 
@@ -301,14 +307,16 @@ async def dep_check(c: CallbackQuery):
 @router.callback_query(F.data == "dep:hist")
 async def dep_history(c: CallbackQuery):
     rows = await db.q("SELECT * FROM deposits WHERE user_id=? ORDER BY id DESC LIMIT 15", (c.from_user.id,))
-    t = f"{LINE}\n📄 <b>RIWAYAT DEPOSIT</b>\n{LINE}\n\n"
+    t = tree([("📊 Menampilkan", f"<b>{len(rows)}</b> deposit terakhir")],
+             head="📄 <b>RIWAYAT DEPOSIT</b>")
     if rows:
+        t += "\n\n"
         for d in rows:
             t += (f"{_dep_status(d)} <b>#{d['id']}</b> • {rp(d['amount'])}\n"
                   f"   <code>{esc(d['invoice_id'] or d['ref'] or '-')}</code> • <i>{esc(d['created_at'])}</i>\n"
                   f"   ──────────\n")
     else:
-        t += "Belum ada deposit. Silakan isi saldo melalui tombol berikut 👇"
+        t += "\n\nBelum ada deposit. Silakan isi saldo melalui tombol berikut 👇"
     buttons = [[(f"{DEP_ICON.get(d['status'], '•')} #{d['id']} • {rp(d['amount'])}", f"dep:view:{d['id']}")]
                for d in rows[:8]]
     buttons += [[("💰 Deposit Baru", "dep")], BACK]
@@ -366,17 +374,21 @@ async def _konfirmasi(ev, state: FSMContext, s, d: dict):
     price = await _harga(d, s)
     u = await db.get_user(ev.from_user.id)
     cukup = "✅ cukup" if u["balance"] >= price else "⚠️ belum cukup, silakan deposit"
-    t = (f"{LINE}\n🧾 <b>KONFIRMASI PESANAN</b>\n{LINE}\n\n"
-         f"🏷 Layanan : <b>{esc(s['name'])}</b>\n"
-         f"📋 Format : {TYPE_LABELS.get(s['provider_type'], s['provider_type'])}\n"
-         f"🔗 Target : <code>{esc(d['link'])}</code>\n")
+    rows = [
+        ("🏷 Layanan", f"<b>{esc(s['name'])}</b>"),
+        ("📋 Format", TYPE_LABELS.get(s['provider_type'], s['provider_type'])),
+        ("🔗 Target", f"<code>{esc(d['link'])}</code>"),
+    ]
     if d.get("qty"):
-        t += f"🔢 Jumlah : <b>{ui.num(d['qty'])}</b>\n"
+        rows.append(("🔢 Jumlah", f"<b>{ui.num(d['qty'])}</b>"))
     for k, v in (d.get("extra") or {}).items():
-        t += f"✍️ {esc(LABEL_FIELDS.get(k, k)).capitalize()} : <code>{esc(v[:160])}</code>\n"
-    t += (f"💸 Harga : <b>{rp(price)}</b>\n"
-          f"🏦 Saldo : <b>{rp(u['balance'])}</b> — {cukup}\n\n"
-          f"Pastikan target sudah benar. Pesanan akan diproses otomatis setelah konfirmasi ⚡")
+        rows.append((f"✍️ {esc(LABEL_FIELDS.get(k, k)).capitalize()}", f"<code>{esc(v[:160])}</code>"))
+    rows += [
+        ("💸 Harga", f"<b>{rp(price)}</b>"),
+        ("🏦 Saldo", f"<b>{rp(u['balance'])}</b> — {cukup}"),
+    ]
+    t = tree(rows, head="🧾 <b>KONFIRMASI PESANAN</b>")
+    t += "\n\nPastikan target sudah benar. Pesanan akan diproses otomatis setelah konfirmasi ⚡"
     await state.set_state(S.ord_confirm)
     await ev.answer(t, reply_markup=kb([("✅ Bayar & Pesan", "ord:ok"), ("❌ Batal", "menu")]))
 
@@ -419,10 +431,13 @@ async def _ord_groups(ev, page: int):
     if nav:
         rows.append(nav)
     rows.append([("⬅️ Menu", "menu")])
-    await show(ev, f"{LINE}\n🛒 <b>ORDER LAYANAN</b>\n{LINE}\n\n"
-                   f"📂 Dikelompokkan per platform • 💸 <b>termurah → termahal</b>\n"
-                   f"📊 {len(groups)} platform • halaman {page + 1}/{pages}\n\n"
-                   f"Silakan pilih platform:", kb(*rows))
+    t = tree([
+        "📂 Dikelompokkan per platform",
+        "💸 Termurah → termahal",
+        f"📊 {len(groups)} platform • halaman {page + 1}/{pages}",
+    ], head="🛒 <b>ORDER LAYANAN</b>")
+    t += "\n\nSilakan pilih platform:"
+    await show(ev, t, kb(*rows))
 
 
 @router.callback_query(F.data == "ord")
@@ -457,10 +472,12 @@ async def ord_group_cb(c: CallbackQuery):
     if nav:
         rows.append(nav)
     rows.append([("⬅️ Platform", "ord:g:0")])
-    await show(c, f"{LINE}\n{group['emoji']} <b>{esc(group['label'].upper())}</b>\n{LINE}\n\n"
-                  f"📁 {len(cats)} kategori • {ui.num(group['count'])} layanan\n"
-                  f"💸 Termurah dulu • halaman {page + 1}/{pages}\n\n"
-                  f"Silakan pilih kategori:", kb(*rows))
+    t = tree([
+        f"📁 {len(cats)} kategori • {ui.num(group['count'])} layanan",
+        f"💸 Termurah dulu • halaman {page + 1}/{pages}",
+    ], head=f"{group['emoji']} <b>{esc(group['label'].upper())}</b>")
+    t += "\n\nSilakan pilih kategori:"
+    await show(c, t, kb(*rows))
 
 
 @router.callback_query(F.data.startswith("ord:c:"))
@@ -488,10 +505,13 @@ async def ord_cat(c: CallbackQuery):
     if nav:
         rows.append(nav)
     rows.append([("⬅️ Platform", f"ord:p:{key}:0")])
-    await show(c, f"{LINE}\n{cat['emoji']} <b>{esc(cat['name'].upper())}</b>\n{LINE}\n\n"
-                  f"🏷 {emoji} {esc(label)}\n"
-                  f"💸 Termurah dulu • {len(svcs)} layanan • halaman {page + 1}/{pages}\n"
-                  f"🛡 Garansi refill • ⚡ Proses cepat\n\nSilakan pilih layanan:", kb(*rows))
+    t = tree([
+        f"🏷 {emoji} {esc(label)}",
+        f"💸 Termurah dulu • {len(svcs)} layanan • halaman {page + 1}/{pages}",
+        "🛡 Garansi refill • ⚡ Proses cepat",
+    ], head=f"{cat['emoji']} <b>{esc(cat['name'].upper())}</b>")
+    t += "\n\nSilakan pilih layanan:"
+    await show(c, t, kb(*rows))
 
 
 @router.callback_query(F.data.startswith("ord:s:"))
@@ -505,14 +525,16 @@ async def ord_service(c: CallbackQuery):
         spesifikasi = "\n".join(f"• {esc(line)}" for line in desc.splitlines()[:6])
     else:
         spesifikasi = "• Layanan diproses otomatis oleh provider."
-    await show(c, f"{LINE}\n📌 <b>{esc(s['name'])}</b>\n{LINE}\n\n"
-                  f"📋 Format : {TYPE_LABELS.get(s['provider_type'], s['provider_type'])}\n"
-                  f"💸 Harga : <b>{rp(await db.effective_price(s))}</b> / 1.000\n"
-                  f"🔢 Min/Max : {ui.num(s['min_qty'])} / {ui.num(s['max_qty'])}\n"
-                  f"🛡 Garansi : {'✅ Ada refill' if s['provider_refill'] else '❌ Tanpa refill'}\n"
-                  f"⏱ Estimasi : <i>{esc(estimasi)}</i>\n\n"
-                  f"📝 <b>Spesifikasi layanan:</b>\n{spesifikasi}\n\n"
-                  f"💡 Tagihan menyesuaikan jumlah/baris yang Anda kirim.",
+    t = tree([
+        ("📋 Format", TYPE_LABELS.get(s['provider_type'], s['provider_type'])),
+        ("💸 Harga", f"<b>{rp(await db.effective_price(s))}</b> / 1.000"),
+        ("🔢 Min/Max", f"{ui.num(s['min_qty'])} / {ui.num(s['max_qty'])}"),
+        ("🛡 Garansi", "✅ Ada refill" if s['provider_refill'] else "❌ Tanpa refill"),
+        ("⏱ Estimasi", f"<i>{esc(estimasi)}</i>"),
+    ], head=f"📌 <b>{esc(s['name'])}</b>")
+    t += (f"\n\n📝 <b>Spesifikasi layanan:</b>\n{spesifikasi}\n\n"
+          f"💡 Tagihan menyesuaikan jumlah/baris yang Anda kirim.")
+    await show(c, t,
                kb([("🛒 Pesan Sekarang", f"ord:go:{s['id']}")], [("⬅️ Kembali", f"ord:c:{s['category_id']}:0")]))
 
 
@@ -597,19 +619,27 @@ async def ord_ok(c: CallbackQuery, state: FSMContext):
                                    ptype=s["provider_type"], **extra)
     except Exception:
         await db.cancel_order(oid)
-        await ui.log_channel(c.bot, f"↩️ <b>REFUND ORDER</b> #{oid}\n"
-                                    f"👤 {ui.public_user(c.from_user.id)}\n💸 {rp(price)} dikembalikan • gagal diproses")
+        await ui.log_channel(c.bot, tree([
+            ("👤 User", ui.public_user(c.from_user.id)),
+            ("💸 Nominal", rp(price)),
+            ("📌 Alasan", "Gagal diproses, saldo dikembalikan"),
+        ], head=f"↩️ <b>REFUND ORDER</b> #{oid}"))
         return await show(c, "⚠️ Pesanan belum dapat diproses. Saldo Anda dikembalikan.", kb(BACK))
     await db.x("UPDATE orders SET provider_order_id=? WHERE id=?", (pid, oid))
     u = await db.get_user(c.from_user.id)
-    await show(c, f"✅ <b>Pesanan Berhasil Dibuat!</b>\n\n├ Order ID : <code>#{oid}</code>\n"
-                  f"├ Layanan : {esc(s['name'])}\n├ Harga : {rp(price)}\n"
-                  f"└ Sisa Saldo : <b>{rp(u['balance'])}</b>", kb([("📦 Pesanan Saya", "myord")], BACK))
+    await show(c, tree([
+        ("🆔 Order ID", f"<code>#{oid}</code>"),
+        ("🏷 Layanan", esc(s['name'])),
+        ("💸 Harga", rp(price)),
+        ("💰 Sisa Saldo", f"<b>{rp(u['balance'])}</b>"),
+    ], head="✅ <b>Pesanan Berhasil Dibuat!</b>"), kb([("📦 Pesanan Saya", "myord")], BACK))
     await ui.notify_admins(c.bot, f"🛒 Order baru <code>#{oid}</code> dari <code>{c.from_user.id}</code>\n"
                                   f"{esc(s['name'])} • {rp(price)} • provider <code>{esc(pid)}</code>")
-    await ui.log_channel(c.bot, f"🛒 <b>ORDER BARU</b> #{oid}\n"
-                                f"👤 {ui.public_user(c.from_user.id, u['name'] if u else None, u['username'] if u else None)}\n"
-                                f"📦 {esc(s['name'])} • 💸 {rp(price)}")
+    await ui.log_channel(c.bot, tree([
+        ("👤 User", ui.public_user(c.from_user.id, u['name'] if u else None, u['username'] if u else None)),
+        ("📦 Layanan", esc(s['name'])),
+        ("💸 Harga", rp(price)),
+    ], head=f"🛒 <b>ORDER BARU</b> #{oid}"))
 
 
 # ---------- toko aplikasi ----------
@@ -621,7 +651,9 @@ async def shop(c: CallbackQuery):
         return await show(c, "Belum ada produk.", kb(BACK))
     rows = [[(f"{p['name'][:26]} • {rp(p['price'])}", f"shop:p:{p['id']}")] for p in ps]
     rows += [[("🗂 Pembelian Saya", "shop:my")], BACK]
-    await show(c, f"{LINE}\n📱 <b>TOKO APLIKASI</b>\n{LINE}\n\nSilakan pilih produk digital:", kb(*rows))
+    t = tree([("📦 Produk tersedia", f"<b>{len(ps)}</b>")], head="📱 <b>TOKO APLIKASI</b>")
+    t += "\n\nSilakan pilih produk digital:"
+    await show(c, t, kb(*rows))
 
 
 @router.callback_query(F.data.startswith("shop:p:"))
@@ -633,8 +665,11 @@ async def shop_product(c: CallbackQuery):
     stock = (await db.q1("SELECT COUNT(*) n FROM product_stock WHERE product_id=? AND sold=0", (pid,)))["n"]
     rows = [[("🛒 Beli Sekarang", f"shop:buy:{pid}")]] if stock else []
     rows.append([("⬅️ Kembali", "shop")])
-    await show(c, f"{LINE}\n📦 <b>{esc(p['name'])}</b>\n{LINE}\n\n├ Harga : <b>{rp(p['price'])}</b>\n"
-                  f"├ Stok : <b>{stock}</b>\n└ {esc(p['description'] or '-')}", kb(*rows))
+    await show(c, tree([
+        ("💸 Harga", f"<b>{rp(p['price'])}</b>"),
+        ("📦 Stok", f"<b>{stock}</b>"),
+        ("📝 Deskripsi", esc(p['description'] or '-')),
+    ], head=f"📦 <b>{esc(p['name'])}</b>"), kb(*rows))
 
 
 @router.callback_query(F.data.startswith("shop:buy:"))
@@ -644,19 +679,27 @@ async def shop_buy(c: CallbackQuery):
         rows = [[("💰 Deposit Saldo", "dep")]] if "Saldo" in data else []
         return await show(c, f"⚠️ {data}", kb(*rows, [("⬅️ Toko", "shop")]))
     u = await db.get_user(c.from_user.id)
-    await show(c, f"✅ <b>Pembelian Berhasil!</b>\n\n📦 {esc(p['name'])}\n💸 {rp(p['price'])}\n\n"
-                  f"🔐 <b>Data produk:</b>\n<code>{esc(data)}</code>\n\nSisa saldo: <b>{rp(u['balance'])}</b>",
-               kb([("📱 Toko", "shop")], BACK))
+    t = tree([
+        ("📦 Produk", esc(p['name'])),
+        ("💸 Harga", rp(p['price'])),
+        ("💰 Sisa Saldo", f"<b>{rp(u['balance'])}</b>"),
+    ], head="✅ <b>Pembelian Berhasil!</b>")
+    t += f"\n\n🔐 <b>Data produk:</b>\n<code>{esc(data)}</code>"
+    await show(c, t, kb([("📱 Toko", "shop")], BACK))
     await ui.notify_admins(c.bot, f"📱 Pembelian <b>{esc(p['name'])}</b> oleh <code>{c.from_user.id}</code> ({rp(p['price'])})")
-    await ui.log_channel(c.bot, f"📱 <b>PEMBELIAN</b>\n"
-                                f"👤 {ui.public_user(c.from_user.id, u['name'] if u else None, u['username'] if u else None)}\n"
-                                f"📦 {esc(p['name'])} • 💸 {rp(p['price'])}")
+    await ui.log_channel(c.bot, tree([
+        ("👤 User", ui.public_user(c.from_user.id, u['name'] if u else None, u['username'] if u else None)),
+        ("📦 Produk", esc(p['name'])),
+        ("💸 Harga", rp(p['price'])),
+    ], head="📱 <b>PEMBELIAN</b>"))
 
 
 @router.callback_query(F.data == "shop:my")
 async def shop_my(c: CallbackQuery):
     rows = await db.q("SELECT * FROM purchases WHERE user_id=? ORDER BY id DESC LIMIT 5", (c.from_user.id,))
-    t = f"{LINE}\n🗂 <b>PEMBELIAN SAYA</b>\n{LINE}\n\n"
+    t = tree([("📊 Menampilkan", f"<b>{len(rows)}</b> pembelian terakhir")],
+             head="🗂 <b>PEMBELIAN SAYA</b>")
+    t += "\n\n"
     t += "\n\n".join(f"📦 <b>{esc(r['name'])}</b> • {rp(r['price'])}\n<code>{esc(r['data'])}</code>\n<i>{r['created_at']}</i>"
                      for r in rows) or "Belum ada pembelian."
     await show(c, t, kb([("⬅️ Toko", "shop")]))
@@ -668,7 +711,8 @@ async def my_orders(c: CallbackQuery):
     rows = await db.q("SELECT o.*, COALESCE(s.provider_refill,0) pr FROM orders o "
                       "LEFT JOIN services s ON s.id=o.service_id "
                       "WHERE o.user_id=? ORDER BY o.id DESC LIMIT 10", (c.from_user.id,))
-    t = f"{LINE}\n📦 <b>PESANAN SAYA</b>\n{LINE}\n\n"
+    t = tree([("📊 Menampilkan", f"<b>{len(rows)}</b> pesanan terakhir")],
+             head="📦 <b>PESANAN SAYA</b>") + "\n\n"
     kr = []
     for o in rows:
         t += (f"{ui.STATUS_EMOJI.get(o['status'], '•')} <b>#{o['id']}</b> • {esc(o['service_name'])}\n"
@@ -712,7 +756,9 @@ async def ord_refill(c: CallbackQuery):
 async def history(c: CallbackQuery):
     rows = await db.q("SELECT * FROM transactions WHERE user_id=? ORDER BY id DESC LIMIT 15", (c.from_user.id,))
     icons = {"deposit": "💰", "order": "🛒", "purchase": "📱", "refund": "↩️", "referral": "🎁", "mission": "🎯", "admin": "🛠"}
-    t = f"{LINE}\n🧾 <b>RIWAYAT TRANSAKSI</b>\n{LINE}\n\n"
+    t = tree([("📊 Menampilkan", f"<b>{len(rows)}</b> transaksi terakhir")],
+             head="🧾 <b>RIWAYAT TRANSAKSI</b>")
+    t += "\n\n"
     if rows:
         t += "\n".join(f"{icons.get(r['type'], '•')} {'+' if r['amount'] > 0 else '-'}{rp(abs(r['amount']))} "
                        f"— {esc(r['note'] or r['type'])}\n   <i>{r['created_at']}</i>" for r in rows)
@@ -726,15 +772,16 @@ async def profile(c: CallbackQuery):
     u = await db.get_user(c.from_user.id)
     refs = await db.referral_count(u["id"])
     st = {"joined": "✅ Terverifikasi", "out": "❌ Perlu gabung lagi"}.get(u["channel_status"], "⏳ Belum dicek")
-    await show(c, f"{LINE}\n👤 <b>PROFIL SAYA</b>\n{LINE}\n\n"
-                  f"🙋 Nama : <b>{esc(u['name'] or '-')}</b>\n"
-                  f"🆔 ID : <code>{u['id']}</code>\n"
-                  f"💰 Saldo : <b>{rp(u['balance'])}</b>\n"
-                  f"📦 Total Order : <b>{ui.num(u['total_order'])}</b>\n"
-                  f"💳 Total Belanja : <b>{rp(u['total_spent'])}</b>\n"
-                  f"🎁 Referral : <b>{refs}</b> teman • {rp(u['ref_earned'])}\n"
-                  f"🔒 Register channel : <b>{st}</b>\n"
-                  f"📅 Bergabung : {esc(u['joined_at'])} WIB",
+    await show(c, tree([
+        ("🙋 Nama", f"<b>{esc(u['name'] or '-')}</b>"),
+        ("🆔 ID", f"<code>{u['id']}</code>"),
+        ("💰 Saldo", f"<b>{rp(u['balance'])}</b>"),
+        ("📦 Total Order", f"<b>{ui.num(u['total_order'])}</b>"),
+        ("💳 Total Belanja", f"<b>{rp(u['total_spent'])}</b>"),
+        ("🎁 Referral", f"<b>{refs}</b> teman • {rp(u['ref_earned'])}"),
+        ("🔒 Channel", f"<b>{st}</b>"),
+        ("📅 Bergabung", f"{esc(u['joined_at'])} WIB"),
+    ], head="👤 <b>PROFIL SAYA</b>"),
                kb([("💰 Deposit", "dep"), ("🧾 Riwayat", "hist")], BACK))
 
 
@@ -749,14 +796,19 @@ async def referral(c: CallbackQuery):
     days = max(0, int(await db.setting("ref_days") or 0))
     masa = f"{days} hari" if days else "tanpa batas"
     link = f"https://t.me/{me.username}?start=ref_{u['id']}"
-    await show(c, f"{LINE}\n🎁 <b>PROGRAM REFERRAL</b>\n{LINE}\n\n"
-                  f"Ajak teman &amp; dapatkan:\n"
-                  f"├ Bonus daftar : <b>{rp(bonus)}</b>{' (nonaktif)' if bonus <= 0 else ''}\n"
-                  f"└ Komisi order : <b>{pct}%</b> setelah order teman selesai\n\n"
-                  f"⏳ Komisi berlaku <b>{masa}</b> sejak teman gabung lewat link Anda. "
-                  f"Dihitung dari keuntungan order, jadi tetap aman &amp; saling menguntungkan.\n\n"
-                  f"🔗 Link Anda:\n<code>{link}</code>\n\n"
-                  f"📈 Teman diundang : <b>{refs}</b>\n💰 Total pendapatan : <b>{rp(u['ref_earned'])}</b>",
+    t = tree([
+        ("🎁 Bonus daftar", f"<b>{rp(bonus)}</b>{' (nonaktif)' if bonus <= 0 else ''}"),
+        ("💸 Komisi order", f"<b>{pct}%</b> setelah order teman selesai"),
+    ], head="🎁 <b>PROGRAM REFERRAL</b>")
+    t += (f"\n\nAjak teman &amp; dapatkan hadiah di atas.\n\n"
+          f"⏳ Komisi berlaku <b>{masa}</b> sejak teman gabung lewat link Anda. "
+          f"Dihitung dari keuntungan order, jadi tetap aman &amp; saling menguntungkan.\n\n"
+          f"🔗 <b>Link Anda:</b>\n<code>{link}</code>")
+    t += "\n\n" + tree([
+        ("📈 Teman diundang", f"<b>{refs}</b>"),
+        ("💰 Total pendapatan", f"<b>{rp(u['ref_earned'])}</b>"),
+    ], head="📊 <b>STATISTIK REFERRAL</b>")
+    await show(c, t,
                kb([("📤 Bagikan Link", f"https://t.me/share/url?url={link}&text=Order%20sosmed%20murah%20di%20{BOT_NAME}")], BACK))
 
 
@@ -764,7 +816,7 @@ async def referral(c: CallbackQuery):
 @router.callback_query(F.data == "msn")
 async def missions(c: CallbackQuery):
     ms = await db.q("SELECT * FROM missions WHERE active=1 ORDER BY id")
-    t = f"{LINE}\n🎯 <b>MISI SPECIAL</b>\n{LINE}\n\n"
+    t = tree([("🎯 Misi aktif", f"<b>{len(ms)}</b>")], head="🎯 <b>MISI SPECIAL</b>") + "\n\n"
     rows = []
     for m in ms:
         prog, claimed = await db.mission_state(c.from_user.id, m)
@@ -790,8 +842,11 @@ async def claim(c: CallbackQuery):
         await c.answer(info, show_alert=True)
     else:
         await c.answer(f"🎉 +{rp(reward)} masuk ke saldo!", show_alert=True)
-        await ui.log_channel(c.bot, f"🎯 <b>MISI DIKLAIM</b>\n👤 {ui.public_user(c.from_user.id)}\n"
-                                    f"🏆 {esc(info)} • 💰 +{rp(reward)}")
+        await ui.log_channel(c.bot, tree([
+            ("👤 User", ui.public_user(c.from_user.id)),
+            ("🏆 Misi", esc(info)),
+            ("💰 Hadiah", f"+{rp(reward)}"),
+        ], head="🎯 <b>MISI DIKLAIM</b>"))
     await missions(c)
 
 

@@ -106,8 +106,7 @@ def join_caption(missing) -> str:
     for label, chat, url in CHANNELS:
         left = any(_norm(x[1]) == _norm(chat) for x in missing)
         rows.append(f"{'❌' if left else '✅'} {label} — <a href=\"{url}\">{ui.esc(chat)}</a>")
-    return (f"{ui.LINE}\n🔒 <b>WAJIB GABUNG 2 CHANNEL</b>\n{ui.LINE}\n\n"
-            + "\n".join(rows)
+    return (ui.tree(rows, head="🔒 <b>WAJIB GABUNG 2 CHANNEL</b>")
             + "\n\nAnda belum bergabung atau baru saja keluar dari channel. "
               "Silakan bergabung, lalu tekan <b>✅ Saya sudah gabung</b>.\n\n"
               "Kedua channel dipakai sebagai sumber informasi &amp; bukti transaksi, bukan pendaftaran terpisah.")
@@ -126,11 +125,15 @@ async def gate(ev, bot: Bot | None = None, state=None, welcome: bool = False,
         u = await db.get_user(uid)
         who = ui.public_user(uid, u["name"] if u else None, u["username"] if u else None)
         if missing:
-            await ui.log_channel(bot, f"⚠️ <b>AKTIVITAS CHANNEL</b>\n👤 {who}\n"
-                                      f"Belum join: {ui.esc(', '.join(x[1] for x in missing))}")
+            await ui.log_channel(bot, ui.tree([
+                ("👤 User", who),
+                ("🔒 Belum join", ui.esc(', '.join(x[1] for x in missing))),
+            ], head="⚠️ <b>AKTIVITAS CHANNEL</b>"))
         elif old is not None:
-            await ui.log_channel(bot, f"✅ <b>CHANNEL TERVERIFIKASI</b>\n👤 {who}\n"
-                                      f"Sudah gabung di 2 channel")
+            await ui.log_channel(bot, ui.tree([
+                ("👤 User", who),
+                ("✅ Status", "Sudah gabung di 2 channel"),
+            ], head="✅ <b>CHANNEL TERVERIFIKASI</b>"))
     if not missing:
         return False
     if welcome:

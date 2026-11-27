@@ -55,7 +55,8 @@ def parse(text, title: str | None = None, badge: str | None = None,
           footer: str | None = None, tiles=None) -> dict:
     lines = [x.strip() for x in clean(text).splitlines() if x.strip()]
     headline = clean(title) if title else (lines.pop(0) if lines else "AKTIVITAS")
-    rows = [x for x in lines if not x.startswith("🔗")]
+    headline = re.sub(r"^[┌├└]\s*", "", headline)
+    rows = [re.sub(r"^[┌├└]\s*", "", x) for x in lines if not x.startswith("🔗")]
     joined = " ".join(rows)
     money = MONEY.search(joined)
     return {

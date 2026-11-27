@@ -12,7 +12,7 @@ import limits
 import ui
 from config import ADMIN_IDS, CUSTOM_MENU_PHOTO, DB_PATH
 from providers import normalize_type, provider
-from ui import LINE, answer_cb, esc, kb, rp, show
+from ui import answer_cb, esc, kb, rp, show, tree
 
 router = Router()
 
@@ -63,11 +63,12 @@ async def prompt(c, state, st, text, **data):
 # ---------- panel ----------
 async def panel_text():
     s = await db.global_stats()
-    return (f"{LINE}\n🛠 <b>PANEL ADMIN {esc(ui.BOT_NAME.upper())}</b>\n{LINE}\n\n"
-            f"👥 User : <b>{ui.num(s['users'])}</b> (+{s['today_users']} hari ini)\n"
-            f"🛒 Order : <b>{ui.num(s['orders'])}</b> • aktif {s['active_orders']}\n"
-            f"💰 Omzet : <b>{rp(s['revenue'])}</b>\n"
-            f"⏳ Deposit pending : <b>{s['pending_dep']}</b>")
+    return tree([
+        ("👥 User", f"<b>{ui.num(s['users'])}</b> (+{s['today_users']} hari ini)"),
+        ("🛒 Order", f"<b>{ui.num(s['orders'])}</b> • aktif {s['active_orders']}"),
+        ("💰 Omzet", f"<b>{rp(s['revenue'])}</b>"),
+        ("⏳ Deposit pending", f"<b>{s['pending_dep']}</b>"),
+    ], head=f"🛠 <b>PANEL ADMIN {esc(ui.BOT_NAME.upper())}</b>")
 
 
 def panel_kb():
@@ -99,11 +100,20 @@ async def admin_cb(c: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "adm:stats")
 async def stats(c: CallbackQuery):
     s = await db.global_stats()
-    await show(c, f"{LINE}\n📊 <b>STATISTIK LENGKAP</b>\n{LINE}\n\n"
-                  f"<b>Hari ini</b>\n├ User baru : {s['today_users']}\n├ Order : {s['today_orders']}\n└ Omzet : {rp(s['today_rev'])}\n\n"
-                  f"<b>Total</b>\n├ User : {ui.num(s['users'])}\n├ Order : {ui.num(s['orders'])}\n├ Omzet : {rp(s['revenue'])}\n"
-                  f"├ Total deposit : {rp(s['deposits'])}\n├ Saldo user beredar : {rp(s['balance'])}\n"
-                  f"└ Uptime bot : {ui.uptime()}", kb([("🔄 Refresh", "adm:stats")], PANEL))
+    t = tree([
+        ("👥 User baru", s['today_users']),
+        ("🛒 Order", s['today_orders']),
+        ("💰 Omzet", rp(s['today_rev'])),
+    ], head="📅 <b>HARI INI</b>")
+    t += "\n\n" + tree([
+        ("👥 User", ui.num(s['users'])),
+        ("🛒 Order", ui.num(s['orders'])),
+        ("💰 Omzet", rp(s['revenue'])),
+        ("💳 Total deposit", rp(s['deposits'])),
+        ("🏦 Saldo user beredar", rp(s['balance'])),
+        ("⏱ Uptime bot", ui.uptime()),
+    ], head="📊 <b>TOTAL KESELURUHAN</b>")
+    await show(c, t, kb([("🔄 Refresh", "adm:stats")], PANEL))
 
 
 # ---------- provider API ----------
@@ -112,15 +122,17 @@ async def api_text(balance=None) -> str:
     pct = await db.setting("markup_percent")
     flat = await db.setting("markup_flat")
     bal = "ketuk Cek Modal" if balance is None else rp(balance)
-    return (f"{LINE}\n🌐 <b>PROVIDER API · MEDANPEDIA</b>\n{LINE}\n\n"
-            f"├ Kredensial : {'✅ Terhubung' if provider.configured else '❌ Belum diisi di .env'}\n"
-            f"├ Modal provider : <b>{esc(bal)}</b> (khusus admin)\n"
-            f"├ Layanan tersinkron : <b>{n}</b>\n"
-            f"├ Favorit saja : {'⭐ Ya' if await db.setting('service_fav') == '1' else 'Semua'}\n"
-            f"├ Auto sinkron : {'✅ ON' if await db.setting('auto_sync') == '1' else '⛔ OFF'}\n"
-            f"└ Margin : <b>{esc(pct)}%</b> + {rp(flat)} / 1K\n\n"
-            f"🔒 Modal provider tidak pernah ditampilkan ke user. Harga jual otomatis "
-            f"naik mengikuti modal agar bot tetap untung.")
+    t = tree([
+        ("🔐 Kredensial", "✅ Terhubung" if provider.configured else "❌ Belum diisi di .env"),
+        ("💰 Modal provider", f"<b>{esc(bal)}</b> (khusus admin)"),
+        ("📦 Layanan tersinkron", f"<b>{n}</b>"),
+        ("⭐ Favorit saja", "Ya" if await db.setting('service_fav') == '1' else "Semua"),
+        ("🔄 Auto sinkron", "✅ ON" if await db.setting('auto_sync') == '1' else "⛔ OFF"),
+        ("📈 Margin", f"<b>{esc(pct)}%</b> + {rp(flat)} / 1K"),
+    ], head="🌐 <b>PROVIDER API · MEDANPEDIA</b>")
+    t += ("\n\n🔒 Modal provider tidak pernah ditampilkan ke user. Harga jual otomatis "
+          "naik mengikuti modal agar bot tetap untung.")
+    return t
 
 
 def api_kb():
@@ -149,9 +161,13 @@ async def api_sync(c: CallbackQuery):
         if res["new_count"] or res["changed_count"]:
             ok, fail = await ui.catalog_update_notice(c.bot, res)
             notice = f"\n\n📢 Info terkirim: <b>{ok}</b> user • gagal: <b>{fail}</b>"
-        await show(c, f"✅ <b>Sinkron selesai</b>\n\n├ Layanan diterima : <b>{res['total']}</b>\n"
-                      f"├ Baru : <b>{res['added']}</b>\n└ Diperbarui : <b>{res['updated']}</b>{notice}\n\n"
-                      f"Harga jual otomatis menyesuaikan margin. Modal tetap tersembunyi.", api_kb())
+        t = tree([
+            ("📦 Layanan diterima", f"<b>{res['total']}</b>"),
+            ("🆕 Baru", f"<b>{res['added']}</b>"),
+            ("♻️ Diperbarui", f"<b>{res['updated']}</b>"),
+        ], head="✅ <b>Sinkron selesai</b>")
+        t += notice + "\n\nHarga jual otomatis menyesuaikan margin. Modal tetap tersembunyi."
+        await show(c, t, api_kb())
     except Exception as e:
         await show(c, f"⚠️ Gagal sinkron: {esc(str(e)[:200])}", api_kb())
 
@@ -290,11 +306,17 @@ async def user_card(uid: int):
         return None, None
     refs = await db.referral_count(uid)
     ch = {"joined": "✅ Join 2 channel", "out": "❌ Perlu gabung lagi"}.get(u["channel_status"], "⏳ Belum dicek")
-    t = (f"{LINE}\n👤 <b>USER</b> <code>{uid}</code>\n{LINE}\n\n├ Nama : {esc(u['name'] or '-')}\n"
-         f"├ Username : {('@' + esc(u['username'])) if u['username'] else '-'}\n├ Saldo : <b>{rp(u['balance'])}</b>\n"
-         f"├ Order : {u['total_order']} • belanja {rp(u['total_spent'])}\n├ Referral : {refs} • {rp(u['ref_earned'])}\n"
-         f"├ Diundang oleh : {u['referred_by'] or '-'}\n├ Status : {'🚫 BANNED' if u['banned'] else '✅ Aktif'}\n"
-         f"├ Channel : {ch}\n└ Bergabung : {u['joined_at']}")
+    t = tree([
+        ("🙋 Nama", esc(u['name'] or '-')),
+        ("🔗 Username", ('@' + esc(u['username'])) if u['username'] else '-'),
+        ("💰 Saldo", f"<b>{rp(u['balance'])}</b>"),
+        ("📦 Order", f"{u['total_order']} • belanja {rp(u['total_spent'])}"),
+        ("🎁 Referral", f"{refs} • {rp(u['ref_earned'])}"),
+        ("👥 Diundang oleh", u['referred_by'] or '-'),
+        ("🔒 Status", '🚫 BANNED' if u['banned'] else '✅ Aktif'),
+        ("📢 Channel", ch),
+        ("📅 Bergabung", u['joined_at']),
+    ], head=f"👤 <b>USER</b> <code>{uid}</code>")
     return t, kb([("➕ Saldo", f"adm:bal:+:{uid}"), ("➖ Saldo", f"adm:bal:-:{uid}")],
                  [("✅ Unban" if u["banned"] else "🚫 Ban", f"adm:ban:{uid}")], PANEL)
 
@@ -320,8 +342,11 @@ async def user_list_page(page: int = 0, search: str = "", per: int = 8):
     """Halaman daftar user + keyboard kartu, pencarian, dan navigasi."""
     rows, total, page, pages = await db.list_users(page, per, search)
     label = esc(search) if search else "Semua"
-    t = (f"{LINE}\n👥 <b>DAFTAR USER</b>\n{LINE}\n\n"
-         f"🔎 {label} • <b>{total}</b> user • halaman <b>{page + 1}/{pages}</b>\n\n")
+    t = tree([
+        ("🔎 Pencarian", label),
+        ("👥 Total user", f"<b>{total}</b>"),
+        f"📄 halaman <b>{page + 1}/{pages}</b>",
+    ], head="👥 <b>DAFTAR USER</b>") + "\n\n"
     kr = []
     for u in rows:
         uname = "@" + esc(u["username"]) if u["username"] else esc(u["name"] or f"ID {u['id']}")
@@ -409,8 +434,11 @@ async def bal_msg(m: Message, state: FSMContext):
             return await m.answer("⚠️ Saldo user tidak cukup.")
     await state.clear()
     target = await db.get_user(uid)
-    await ui.log_channel(m.bot, f"🛠 <b>PENYESUAIAN SALDO</b>\n👤 {ui.public_user(uid, target['name'] if target else None, target['username'] if target else None)}\n"
-                                f"{'➕' if sign == '+' else '➖'} {rp(amt)} oleh admin")
+    await ui.log_channel(m.bot, tree([
+        ("👤 User", ui.public_user(uid, target['name'] if target else None, target['username'] if target else None)),
+        ("💸 Perubahan", f"{'➕' if sign == '+' else '➖'} {rp(amt)}"),
+        ("📌 Sumber", "Penyesuaian admin"),
+    ], head="🛠 <b>PENYESUAIAN SALDO</b>"))
     try:
         await m.bot.send_message(uid, f"🛠 Saldo Anda {'bertambah' if sign == '+' else 'berkurang'} <b>{rp(amt)}</b> oleh admin.")
     except Exception:
@@ -444,7 +472,8 @@ async def svc_list(c: CallbackQuery, state: FSMContext):
     if nav:
         kr.append(nav)
     kr += [[("➕ Tambah Layanan", "adm:svadd")], PANEL]
-    await show(c, f"{LINE}\n🛒 <b>KELOLA LAYANAN</b> ({len(rows)})\n{LINE}", kb(*kr))
+    await show(c, tree([("📦 Total layanan", f"<b>{len(rows)}</b>")],
+                       head="🛒 <b>KELOLA LAYANAN</b>"), kb(*kr))
 
 
 @router.callback_query(F.data.startswith("adm:sv:"))
@@ -455,15 +484,17 @@ async def svc_detail(c: CallbackQuery):
         return await answer_cb(c, "Tidak ditemukan.", True)
     lantai = await db.suggested_price(s["provider_price"]) if s["provider_price"] else 0
     aman = not lantai or s["price_per_1k"] >= lantai
-    t = (f"📌 <b>#{s['id']} {esc(s['name'])}</b>\n\n├ Kategori : {esc(s['cat'] or '-')}\n"
-         f"├ ID Provider : <code>{s['provider_id'] or '-'}</code> • {esc(s['provider_type'])}\n"
-         f"├ 🔒 Modal provider : <b>{rp(s['provider_price'])}</b>/1K (rahasia)\n"
-         f"├ Harga jual : <b>{rp(await db.effective_price(s))}</b>/1K "
-         f"{'✅ aman' if aman else '⚠️ di bawah batas aman'}\n"
-         f"├ Harga otomatis : {'✅ ON' if s['auto_price'] else '🔒 Dikunci'}\n"
-         f"├ Min/Max : {s['min_qty']} / {s['max_qty']}\n"
-         f"├ Status : {'✅ Aktif' if s['active'] else '⛔ Nonaktif'}\n"
-         f"└ {esc(s['description'] or '-')}")
+    t = tree([
+        ("📁 Kategori", esc(s['cat'] or '-')),
+        ("🆔 ID Provider", f"<code>{s['provider_id'] or '-'}</code> • {esc(s['provider_type'])}"),
+        ("🔒 Modal provider", f"<b>{rp(s['provider_price'])}</b>/1K (rahasia)"),
+        ("💸 Harga jual", f"<b>{rp(await db.effective_price(s))}</b>/1K "
+                          f"{'✅ aman' if aman else '⚠️ di bawah batas aman'}"),
+        ("🤖 Harga otomatis", "✅ ON" if s['auto_price'] else "🔒 Dikunci"),
+        ("🔢 Min/Max", f"{s['min_qty']} / {s['max_qty']}"),
+        ("🔒 Status", "✅ Aktif" if s['active'] else "⛔ Nonaktif"),
+        ("📝 Deskripsi", esc(s['description'] or '-')),
+    ], head=f"📌 <b>#{s['id']} {esc(s['name'])}</b>")
     if not aman:
         t += f"\n\n⚠️ Harga Anda di bawah batas aman {rp(lantai)}/1K. Sistem otomatis memakai harga tersebut."
     await show(c, t, kb([("🔁 On/Off", f"adm:svt:{sid}"), ("💲 Ubah Harga", f"adm:svp:{sid}")],
@@ -572,7 +603,8 @@ async def prd_list(c: CallbackQuery, state: FSMContext):
     ps = await db.q("SELECT p.*, (SELECT COUNT(*) FROM product_stock s WHERE s.product_id=p.id AND s.sold=0) stock FROM products p ORDER BY p.id")
     rows = [[(f"{'✅' if p['active'] else '⛔'} {p['name'][:22]} • stok {p['stock']}", f"adm:pr:{p['id']}")] for p in ps]
     rows += [[("➕ Tambah Produk", "adm:pradd")], PANEL]
-    await show(c, f"{LINE}\n📱 <b>KELOLA PRODUK APP</b>\n{LINE}", kb(*rows))
+    await show(c, tree([("📦 Total produk", f"<b>{len(ps)}</b>")],
+                       head="📱 <b>KELOLA PRODUK APP</b>"), kb(*rows))
 
 
 @router.callback_query(F.data.startswith("adm:pr:"))
@@ -582,9 +614,12 @@ async def prd_detail(c: CallbackQuery):
     if not p:
         return await c.answer("Tidak ditemukan.", show_alert=True)
     st = await db.q1("SELECT SUM(sold=0) free, SUM(sold=1) sold FROM product_stock WHERE product_id=?", (pid,))
-    await show(c, f"📦 <b>#{p['id']} {esc(p['name'])}</b>\n\n├ Harga : <b>{rp(p['price'])}</b>\n"
-                  f"├ Stok : {st['free'] or 0} • Terjual : {st['sold'] or 0}\n"
-                  f"├ Status : {'✅ Aktif' if p['active'] else '⛔ Nonaktif'}\n└ {esc(p['description'] or '-')}",
+    await show(c, tree([
+        ("💸 Harga", f"<b>{rp(p['price'])}</b>"),
+        ("📦 Stok", f"{st['free'] or 0} • Terjual : {st['sold'] or 0}"),
+        ("🔒 Status", "✅ Aktif" if p['active'] else "⛔ Nonaktif"),
+        ("📝 Deskripsi", esc(p['description'] or '-')),
+    ], head=f"📦 <b>#{p['id']} {esc(p['name'])}</b>"),
                kb([("➕ Tambah Stok", f"adm:prs:{pid}"), ("🔁 On/Off", f"adm:prt:{pid}")],
                   [("🗑 Hapus", f"adm:prd_del:{pid}")], [("⬅️ Daftar", "adm:prd")]))
 
@@ -643,7 +678,8 @@ async def ord_list(c: CallbackQuery):
     rows = await db.q("SELECT * FROM orders ORDER BY id DESC LIMIT 10")
     kr = [[(f"{ui.STATUS_EMOJI.get(o['status'], '•')} #{o['id']} {o['service_name'][:20]} • {rp(o['price'])}", f"adm:od:{o['id']}")] for o in rows]
     kr += [[("🔄 Refresh", "adm:ord")], PANEL]
-    await show(c, f"{LINE}\n📦 <b>PESANAN TERBARU</b>\n{LINE}", kb(*kr))
+    await show(c, tree([("📊 Menampilkan", f"<b>{len(rows)}</b> pesanan terbaru")],
+                       head="📦 <b>PESANAN TERBARU</b>"), kb(*kr))
 
 
 @router.callback_query(F.data.startswith("adm:od:"))
@@ -655,10 +691,16 @@ async def ord_detail(c: CallbackQuery, oid: int):
     o = await db.q1("SELECT * FROM orders WHERE id=?", (oid,))
     if not o:
         return await c.answer("Tidak ditemukan.", show_alert=True)
-    await show(c, f"📦 <b>Order #{o['id']}</b>\n\n├ User : <code>{o['user_id']}</code>\n├ Layanan : {esc(o['service_name'])}\n"
-                  f"├ Target : <code>{esc(o['link'])}</code>\n├ Jumlah : {ui.num(o['quantity'])}\n├ Harga : {rp(o['price'])}\n"
-                  f"├ Provider ID : {o['provider_order_id'] or '-'}\n├ Status : {ui.STATUS_EMOJI.get(o['status'], '')} {o['status']}\n"
-                  f"└ {o['created_at']}",
+    await show(c, tree([
+        ("👤 User", f"<code>{o['user_id']}</code>"),
+        ("🏷 Layanan", esc(o['service_name'])),
+        ("🔗 Target", f"<code>{esc(o['link'])}</code>"),
+        ("🔢 Jumlah", ui.num(o['quantity'])),
+        ("💸 Harga", rp(o['price'])),
+        ("🆔 Provider ID", o['provider_order_id'] or '-'),
+        ("🔒 Status", f"{ui.STATUS_EMOJI.get(o['status'], '')} {o['status']}"),
+        ("📅 Dibuat", o['created_at']),
+    ], head=f"📦 <b>Order #{o['id']}</b>"),
                kb([("✅ Selesai", f"adm:os:{o['id']}:c"), ("⚙️ Proses", f"adm:os:{o['id']}:p")],
                   [("❌ Batalkan + Refund", f"adm:os:{o['id']}:x")], [("⬅️ Daftar", "adm:ord")]))
 
@@ -673,7 +715,11 @@ async def ord_status(c: CallbackQuery):
             return await c.answer("Order tidak bisa dibatalkan.", show_alert=True)
         msg = f"❌ Order <code>#{oid}</code> dibatalkan, saldo {rp(o['price'])} dikembalikan."
         if o["ref_bonus"]:
-            await ui.log_channel(c.bot, f"↩️ Komisi referral order #{oid} ({rp(o['ref_bonus'])}) ditarik karena order dibatalkan.")
+            await ui.log_channel(c.bot, tree([
+                ("🆔 Order", f"#{oid}"),
+                ("💰 Komisi ditarik", rp(o['ref_bonus'])),
+                ("📌 Alasan", "Order dibatalkan"),
+            ], head="↩️ <b>KOMISI REFERRAL DITARIK</b>"))
     else:
         new = "Completed" if code == "c" else "Processing"
         await db.x("UPDATE orders SET status=? WHERE id=? AND status NOT IN ('Canceled')", (new, oid))
@@ -697,7 +743,8 @@ async def dep_list(c: CallbackQuery):
     rows = await db.q("SELECT * FROM deposits WHERE status='pending' ORDER BY id DESC LIMIT 10")
     kr = [[(f"#{d['id']} • {d['user_id']} • {rp(d['amount'])}", f"adm:dp:{d['id']}")] for d in rows]
     kr += [[("🔄 Refresh", "adm:dep")], PANEL]
-    await show(c, f"{LINE}\n💳 <b>DEPOSIT PENDING</b> ({len(rows)})\n{LINE}", kb(*kr))
+    await show(c, tree([("⏳ Menunggu", f"<b>{len(rows)}</b> deposit")],
+                       head="💳 <b>DEPOSIT PENDING</b>"), kb(*kr))
 
 
 @router.callback_query(F.data.startswith("adm:dp:"))
@@ -705,11 +752,17 @@ async def dep_detail(c: CallbackQuery):
     d = await db.q1("SELECT * FROM deposits WHERE id=?", (int(c.data.split(":")[2]),))
     if not d:
         return await c.answer("Tidak ditemukan.", show_alert=True)
-    await show(c, f"💳 <b>Deposit #{d['id']}</b>\n\n├ User : <code>{d['user_id']}</code>\n├ Nominal : <b>{rp(d['amount'])}</b>\n"
-                  f"├ Metode : {d['method']}\n├ Invoice : <code>{esc(d['invoice_id'] or d['ref'] or '-')}</code>\n"
-                  f"├ Status : {d['status']}\n└ {d['created_at']}\n\n"
-                  f"Invoice QRIS tidak bisa dibatalkan. Tombol di bawah hanya untuk konfirmasi manual "
-                  f"jika pengecekan otomatis delay.",
+    t = tree([
+        ("👤 User", f"<code>{d['user_id']}</code>"),
+        ("💰 Nominal", f"<b>{rp(d['amount'])}</b>"),
+        ("💳 Metode", d['method']),
+        ("🔖 Invoice", f"<code>{esc(d['invoice_id'] or d['ref'] or '-')}</code>"),
+        ("🔒 Status", d['status']),
+        ("📅 Dibuat", d['created_at']),
+    ], head=f"💳 <b>Deposit #{d['id']}</b>")
+    t += ("\n\nInvoice QRIS tidak bisa dibatalkan. Tombol di bawah hanya untuk konfirmasi manual "
+          "jika pengecekan otomatis delay.")
+    await show(c, t,
                kb([("✅ Konfirmasi Manual", f"adm:da:{d['id']}")], [("⬅️ Daftar", "adm:dep")]))
 
 
@@ -731,7 +784,9 @@ async def msn_list(c: CallbackQuery, state: FSMContext):
     kr = [[(f"{'✅' if m['active'] else '⛔'} {m['title'][:22]} +{ui.num(m['reward'])}", f"adm:mt:{m['id']}"),
            ("🗑", f"adm:md:{m['id']}")] for m in ms]
     kr += [[("➕ Tambah Misi", "adm:msnadd")], PANEL]
-    await show(c, f"{LINE}\n🎯 <b>KELOLA MISI</b>\n{LINE}\n\nKetuk nama untuk on/off, 🗑 untuk hapus.", kb(*kr))
+    t = tree([("🎯 Total misi", f"<b>{len(ms)}</b>")], head="🎯 <b>KELOLA MISI</b>")
+    t += "\n\nKetuk nama untuk on/off, 🗑 untuk hapus."
+    await show(c, t, kb(*kr))
 
 
 @router.callback_query(F.data.startswith("adm:mt:"))
@@ -777,9 +832,10 @@ SET_LABELS = {"ref_percent": "Komisi referral (% margin, max 50)", "ref_days": "
 
 async def settings_view(ev):
     mt = await db.setting("maintenance") == "1"
-    t = f"{LINE}\n⚙️ <b>PENGATURAN</b>\n{LINE}\n\n🛠 Maintenance : <b>{'ON' if mt else 'OFF'}</b>\n"
+    rows = [("🛠 Maintenance", f"<b>{'ON' if mt else 'OFF'}</b>")]
     for k, lbl in SET_LABELS.items():
-        t += f"├ {lbl} : <b>{esc(await db.setting(k) or '-')}</b>\n"
+        rows.append((lbl, f"<b>{esc(await db.setting(k) or '-')}</b>"))
+    t = tree(rows, head="⚙️ <b>PENGATURAN</b>")
     rows = [[(f"🛠 Maintenance: {'matikan' if mt else 'aktifkan'}", "adm:setm")]]
     rows += [[(f"✏️ {lbl}", f"adm:sete:{k}")] for k, lbl in SET_LABELS.items()]
     rows.append(PANEL)

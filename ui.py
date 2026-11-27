@@ -19,7 +19,6 @@ log = logging.getLogger("tarakapedia.ui")
 BOT_URL = f"https://t.me/{os.getenv('BOT_USERNAME', 'tarakapedia_bot').strip().lstrip('@')}"
 START = time.time()
 esc = html.escape
-LINE = "━━━━━━━━━━━━━━━━━━━━"
 BACK = [("⬅️ Kembali", "menu")]
 
 STATUS_EMOJI = {"Pending": "🕒", "Processing": "⚙️", "Completed": "✅", "Canceled": "❌"}
@@ -32,6 +31,25 @@ def rp(n) -> str:
 
 def num(n) -> str:
     return f"{int(n):,}".replace(",", ".")
+
+
+def tree(rows, head: str | None = None) -> str:
+    """Format baris info dengan cabang ┌ ├ └ yang konsisten dan rapi."""
+    items = list(rows)
+    out = [f"┌ {head}"] if head else []
+    for i, row in enumerate(items):
+        if isinstance(row, (tuple, list)) and len(row) == 2:
+            text = f"{row[0]} : {row[1]}"
+        else:
+            text = str(row)
+        if head:
+            branch = "└" if i == len(items) - 1 else "├"
+        elif len(items) == 1:
+            branch = "┌"
+        else:
+            branch = "┌" if i == 0 else ("└" if i == len(items) - 1 else "├")
+        out.append(f"{branch} {text}")
+    return "\n".join(out)
 
 
 def clean_desc(text: str | None, limit: int = 320) -> str:
@@ -125,7 +143,11 @@ async def log_new_member(bot, uid: int, name: str | None, username: str | None,
     if not CHANNEL_LOG:
         return
     who = public_user(uid, name, username)
-    caption = f"🆕 <b>MEMBER BARU</b>\n👤 {who}{ref_line}"
+    rows = [("👤 Member", who)]
+    extra = ref_line.strip()
+    if extra:
+        rows.append(("🎁 Referral", re.sub(r"^🎁\s*(Ref:\s*)?", "", extra)))
+    caption = tree(rows, head="🆕 <b>MEMBER BARU</b>")
     if CHANNEL_REGISTRY_URL:
         caption += f"\n\n🔗 Channel Utama: {CHANNEL_REGISTRY_URL}"
     try:
@@ -258,33 +280,39 @@ async def top_spender_block(limit: int = 3, period: str = "all") -> str:
     rows = await db.top_spenders(limit, period)
     title = {
         "all": "🏆 <b>TOP TRANSAKSI</b>",
-        "week": "📅 <b>TOP MINGGUAN</b>\n⏳ 7 hari terakhir",
-        "month": "🗓 <b>TOP BULANAN</b>\n⏳ 30 hari terakhir",
+        "week": "📅 <b>TOP MINGGUAN</b>",
+        "month": "🗓 <b>TOP BULANAN</b>",
     }.get(period, "🏆 <b>TOP TRANSAKSI</b>")
+    note = {"week": "⏳ 7 hari terakhir", "month": "⏳ 30 hari terakhir"}.get(period)
     if not rows:
-        return f"{title}\nBelum ada transaksi. Jadilah yang pertama! 🚀"
+        lines = [note] if note else []
+        lines.append("Belum ada transaksi. Jadilah yang pertama! 🚀")
+        return tree(lines, head=title)
     medals = ("🥇", "🥈", "🥉")
-    lines = []
+    lines = [note] if note else []
     for i, r in enumerate(rows):
         rank = medals[i] if i < len(medals) else f"{i + 1}."
         label = f"@{r['username']}" if r["username"] else (r["name"] or f"ID {r['id']}")
         lines.append(f"{rank} {user_link(r['id'], label, r['username'])} • <b>{rp(r['total_spent'])}</b>")
-    return title + "\n" + "\n".join(lines)
+    return tree(lines, head=title)
 
 
 async def menu_caption(uid: int) -> str:
     u = await db.get_user(uid)
     s = await db.global_stats()
-    t = (f"{LINE}\n💎 <b>{esc(BOT_NAME.upper())} · SMM PANEL</b>\n{LINE}\n\n"
-         f"Selamat datang kembali, {esc(u['name'] or 'Pengguna')} 👋\n\n"
-         f"┌ 💰 Saldo  : <b>{rp(u['balance'])}</b>\n"
-         f"├ 📦 Order  : <b>{num(u['total_order'])}</b> kali\n"
-         f"└ 👥 Member : <b>{num(s['users'])}</b> orang\n\n")
-    t += await top_spender_block(3) + "\n\n"
-    t += ("⚡ Pesanan diproses otomatis 24/7\n"
-          "💸 Deposit QRIS dengan konfirmasi otomatis\n"
-          "🎁 Program referral dengan komisi margin order\n\n"
-          "Silakan pilih menu berikut 👇")
+    t = tree([
+        ("👤 Pengguna", f"<b>{esc(u['name'] or 'Pengguna')}</b>"),
+        ("💰 Saldo", f"<b>{rp(u['balance'])}</b>"),
+        ("📦 Order", f"<b>{num(u['total_order'])}</b> kali"),
+        ("👥 Member", f"<b>{num(s['users'])}</b> orang"),
+    ], head=f"💎 <b>{esc(BOT_NAME.upper())} · SMM PANEL</b>")
+    t += "\n\n" + await top_spender_block(3) + "\n\n"
+    t += tree([
+        "⚡ Pesanan diproses otomatis 24/7",
+        "💸 Deposit QRIS dengan konfirmasi otomatis",
+        "🎁 Referral dengan komisi dari margin order",
+    ], head="✨ <b>LAYANAN UTAMA</b>")
+    t += "\n\nSilakan pilih menu berikut 👇"
     ann = await db.setting("announcement")
     if ann:
         t += f"\n\n📢 <b>Info:</b> {esc(ann[:140])}"
@@ -320,15 +348,19 @@ async def deposit_paid_notice(bot, result):
     u = await db.get_user(d["user_id"])
     try:
         await bot.send_message(d["user_id"],
-                               f"✅ <b>Deposit Berhasil!</b>\n\n├ Nominal : <b>{rp(d['amount'])}</b>\n"
-                               f"└ Saldo : <b>{rp(u['balance'])}</b>",
+                               tree([("💰 Nominal", f"<b>{rp(d['amount'])}</b>"),
+                                     ("🏦 Saldo", f"<b>{rp(u['balance'])}</b>")],
+                                    head="✅ <b>Deposit Berhasil!</b>"),
                                reply_markup=kb([("🛒 Order Layanan", "ord")], BACK))
     except Exception:
         pass
     who = public_user(d["user_id"], u["name"] if u else None, u["username"] if u else None)
     await notify_admins(bot, f"💰 Deposit QRIS #{d['id']} dari <code>{d['user_id']}</code>: {rp(d['amount'])}")
-    await log_channel(bot, f"✅ <b>DEPOSIT LUNAS</b> #{d['id']}\n👤 {who}\n💰 {rp(d['amount'])}\n"
-                           f"🏦 Saldo sekarang: <b>{rp(u['balance'] if u else 0)}</b>")
+    await log_channel(bot, tree([
+        ("👤 User", who),
+        ("💰 Nominal", rp(d["amount"])),
+        ("🏦 Saldo sekarang", f"<b>{rp(u['balance'] if u else 0)}</b>"),
+    ], head=f"✅ <b>DEPOSIT LUNAS</b> #{d['id']}"))
 
 
 async def referral_paid_notice(bot, oid: int, bonus: int, ref_id: int):
@@ -341,9 +373,11 @@ async def referral_paid_notice(bot, oid: int, bonus: int, ref_id: int):
     except Exception:
         pass
     ref = await db.get_user(ref_id)
-    await log_channel(bot, f"🎁 <b>KOMISI REFERRAL</b> #{oid}\n"
-                           f"👤 {public_user(ref_id, ref['name'] if ref else None, ref['username'] if ref else None)}"
-                           f" • {rp(bonus)} dari margin order selesai")
+    await log_channel(bot, tree([
+        ("👤 Penerima", public_user(ref_id, ref["name"] if ref else None, ref["username"] if ref else None)),
+        ("💰 Komisi", rp(bonus)),
+        ("📌 Sumber", "Margin order selesai"),
+    ], head=f"🎁 <b>KOMISI REFERRAL</b> #{oid}"))
 
 
 async def notify_admins(bot, text: str):
@@ -366,16 +400,20 @@ async def catalog_update_notice(bot, info: dict, broadcast: bool = True) -> tupl
         return 0, 0
 
     title = str(info.get("title") or "PEMBARUAN KATALOG")
-    lines = [f"📢 <b>{esc(title)}</b>"]
+    summary = []
     if new_count:
-        lines.append(f"🆕 Layanan baru : <b>{num(new_count)}</b>")
+        summary.append(("🆕 Layanan baru", f"<b>{num(new_count)}</b>"))
     if changed_count:
-        lines.append(f"💲 Perubahan harga : <b>{num(changed_count)}</b>")
+        summary.append(("💲 Perubahan harga", f"<b>{num(changed_count)}</b>"))
+    caption = tree(summary, head=f"📢 <b>{esc(title)}</b>")
+    detail = []
     for x in (info.get("new_items") or [])[:4]:
-        lines.append(f"• {esc(str(x['name'])[:40])} • {rp(x['price'])}")
+        detail.append(f"• {esc(str(x['name'])[:40])} • {rp(x['price'])}")
     for x in (info.get("price_changes") or [])[:4]:
-        lines.append(f"• {esc(str(x['name'])[:28])} : {rp(x['old'])} menjadi {rp(x['new'])}")
-    caption = "\n".join(lines) + "\n\n🛒 Cek layanan terbaru lewat tombol di bawah."
+        detail.append(f"• {esc(str(x['name'])[:28])} : {rp(x['old'])} menjadi {rp(x['new'])}")
+    if detail:
+        caption += "\n\n" + "\n".join(detail)
+    caption += "\n\n🛒 Cek layanan terbaru lewat tombol di bawah."
 
     await info_channel(bot, caption, card_title=title)
     if not broadcast:
@@ -405,26 +443,25 @@ async def dashboard(uid: int) -> str:
     u = await db.get_user(uid)
     s = await db.global_stats()
     uname = "@" + esc(u["username"]) if u["username"] else "-"
-    t = (
-        f"{LINE}\n💎 <b>{esc(BOT_NAME.upper())} SMM PANEL</b>\n"
-        f"<i>Layanan sosmed &amp; aplikasi premium — cepat, otomatis, terpercaya</i>\n{LINE}\n\n"
-        f"📊 <b>STATISTIK PROFIL</b>\n"
-        f"├ Nama : <b>{esc(u['name'] or '-')}</b>\n"
-        f"├ Username : {uname}\n"
-        f"├ ID Tele : <code>{uid}</code>\n"
-        f"├ Saldo : <b>{rp(u['balance'])}</b>\n"
-        f"├ Total Order : <b>{num(u['total_order'])}</b>\n"
-        f"└ Bergabung : {u['joined_at']} WIB\n\n"
-        f"⭐ <b>TRUST STATISTICS</b>\n"
-        f"├ Member Bot : <b>{num(s['users'])}</b>\n"
-        f"├ Order via Bot : <b>{num(s['orders'])}</b>\n"
-        f"└ Total Transaksi : <b>{rp(s['revenue'])}</b>\n\n"
-        f"🤖 <b>INFORMASI BOT</b>\n"
-        f"├ Status : ONLINE 24/7\n"
-        f"└ Uptime : {uptime()}\n"
-    )
+    t = tree([
+        ("👤 Nama", f"<b>{esc(u['name'] or '-')}</b>"),
+        ("🔗 Username", uname),
+        ("🆔 ID Telegram", f"<code>{uid}</code>"),
+        ("💰 Saldo", f"<b>{rp(u['balance'])}</b>"),
+        ("📦 Total Order", f"<b>{num(u['total_order'])}</b>"),
+        ("📅 Bergabung", f"{u['joined_at']} WIB"),
+    ], head=f"💎 <b>{esc(BOT_NAME.upper())} SMM PANEL</b>")
+    t += "\n\n" + tree([
+        ("👥 Member Bot", f"<b>{num(s['users'])}</b>"),
+        ("🛒 Order via Bot", f"<b>{num(s['orders'])}</b>"),
+        ("💸 Total Transaksi", f"<b>{rp(s['revenue'])}</b>"),
+    ], head="⭐ <b>TRUST STATISTICS</b>")
+    t += "\n\n" + tree([
+        ("Status", "ONLINE 24/7"),
+        ("Uptime", uptime()),
+    ], head="🤖 <b>INFORMASI BOT</b>")
     ann = await db.setting("announcement")
     if ann:
-        t += f"\n📢 <b>Pengumuman</b>\n{esc(ann)}\n"
-    t += f"\n{LINE}\n🚀 <i>Silakan pilih menu transaksi berikut. Sistem memproses pesanan secara otomatis.</i>"
+        t += f"\n\n📢 <b>Pengumuman</b>\n{esc(ann)}"
+    t += "\n\n🚀 <i>Silakan pilih menu transaksi. Sistem memproses pesanan secara otomatis.</i>"
     return t
