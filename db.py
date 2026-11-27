@@ -61,6 +61,9 @@ CREATE TABLE IF NOT EXISTS missions(
 CREATE TABLE IF NOT EXISTS mission_claims(
   user_id INTEGER, mission_id INTEGER, period TEXT, PRIMARY KEY(user_id, mission_id, period));
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS promo_groups(
+  chat_id INTEGER PRIMARY KEY, title TEXT DEFAULT '', active INTEGER DEFAULT 1,
+  added_at TEXT, last_sent_at TEXT, sent_date TEXT, sent_today INTEGER DEFAULT 0);
 CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id);
@@ -78,6 +81,12 @@ DEFAULT_SETTINGS = {
     "auto_sync": "1",         # tarik layanan otomatis saat bot start
     "service_fav": "0",       # hanya ambil layanan favorit provider
     "max_active_deposit": "3",  # batas invoice aktif per user
+    "promo_enabled": "0",     # promosi group hanya jalan setelah diaktifkan admin
+    "promo_min_gap": "120",   # jeda minimal antar promosi per group (menit)
+    "promo_max_gap": "300",   # jeda maksimal antar promosi per group (menit)
+    "promo_hour_from": "8",   # jam aktif promosi (WIB)
+    "promo_hour_to": "21",
+    "promo_daily_limit": "4", # maksimal pesan promosi per group per hari
 }
 
 SERVICE_COLUMNS = {
@@ -173,6 +182,46 @@ async def setting(key: str) -> str:
 async def set_setting(key: str, value: str):
     await x("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (key, value))
+
+
+# ---------- promosi group (hanya kirim, pesan group tetap diabaikan) ----------
+async def promo_groups(active_only: bool = True) -> list:
+    where = "WHERE active=1 " if active_only else ""
+    return await q(f"SELECT * FROM promo_groups {where}ORDER BY added_at DESC, chat_id")
+
+
+async def add_promo_group(chat_id: int, title: str = "") -> bool:
+    """Daftarkan group. Return True kalau group ini benar-benar baru."""
+    chat_id = int(chat_id)
+    cur = await q1("SELECT 1 FROM promo_groups WHERE chat_id=?", (chat_id,))
+    if cur:
+        await x("UPDATE promo_groups SET active=1, title=? WHERE chat_id=?", (str(title or ""), chat_id))
+        return False
+    await x("INSERT INTO promo_groups(chat_id,title,active,added_at) VALUES(?,?,1,?)",
+            (chat_id, str(title or ""), now()))
+    return True
+
+
+async def set_promo_group(chat_id: int, active: bool):
+    await x("UPDATE promo_groups SET active=? WHERE chat_id=?", (1 if active else 0, int(chat_id)))
+
+
+async def remove_promo_group(chat_id: int):
+    await x("DELETE FROM promo_groups WHERE chat_id=?", (int(chat_id),))
+
+
+async def mark_promo_sent(chat_id: int):
+    """Catat pengiriman: hitung ulang kuota harian bila tanggal berbeda."""
+    chat_id = int(chat_id)
+    row = await q1("SELECT sent_date,sent_today FROM promo_groups WHERE chat_id=?", (chat_id,))
+    if not row:
+        return
+    today_at = today()
+    count = int(row["sent_today"] or 0)
+    if row["sent_date"] != today_at:
+        count = 0
+    await x("UPDATE promo_groups SET last_sent_at=?,sent_date=?,sent_today=? WHERE chat_id=?",
+            (now(), today_at, count + 1, chat_id))
 
 
 # ---------- seed demo ----------

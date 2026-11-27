@@ -5,10 +5,12 @@ from aiogram import F, Router
 from aiogram.filters import BaseFilter, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.enums import ChatType
 from aiogram.types import CallbackQuery, FSInputFile, Message
 
 import db
 import limits
+import promo
 import ui
 from config import ADMIN_IDS, CUSTOM_MENU_PHOTO, DB_PATH
 from providers import normalize_type, provider
@@ -40,6 +42,7 @@ class A(StatesGroup):
     markup = State()
     refill_id = State()
     menu_photo = State()
+    promo_group = State()
 
 
 PANEL = [("⬅️ Panel Admin", "adm")]
@@ -79,8 +82,8 @@ def panel_kb():
         [("📦 Pesanan", "adm:ord"), ("💳 Deposit", "adm:dep")],
         [("🎯 Misi", "adm:msn"), ("⚙️ Pengaturan", "adm:set")],
         [("🌐 Provider API", "adm:api"), ("📸 Foto Menu", "adm:menuphoto")],
-        [("📢 Broadcast", "adm:bc"), ("💾 Backup DB", "adm:bak")],
-        [("🧪 Uji Simulasi", "adm:testsim")],  # TEMP: hapus setelah simulasi
+        [("📢 Broadcast", "adm:bc"), ("📣 Promosi Group", "adm:promo")],
+        [("💾 Backup DB", "adm:bak"), ("🧪 Uji Simulasi", "adm:testsim")],  # TEMP: hapus setelah simulasi
         [("⬅️ Menu Utama", "menu")],
     )
 
@@ -966,6 +969,115 @@ async def bc_go(c: CallbackQuery, state: FSMContext):
             fail += 1
         await asyncio.sleep(0.05)
     await c.message.answer(f"✅ Broadcast selesai.\nTerkirim: <b>{ok}</b> • Gagal: <b>{fail}</b>", reply_markup=kb(PANEL))
+
+
+# ---------- promosi group ----------
+async def promo_kb():
+    enabled = (await db.setting("promo_enabled")) == "1"
+    rows = [
+        [("⛔ Nonaktifkan" if enabled else "✅ Aktifkan", "adm:promo:off" if enabled else "adm:promo:on"),
+         ("✉️ Kirim Sekarang", "adm:promo:test")],
+        [("➕ Tambah Group", "adm:promo:add"), ("⏱ Atur Jadwal", "adm:promo:sched")],
+    ]
+    for g in await db.promo_groups():
+        gid = int(g["chat_id"])
+        title = (g["title"] or str(gid)).strip()
+        icon = "🔔" if g["active"] else "🔕"
+        rows.append([(f"{icon} {title[:30]}", f"adm:promo:g:{gid}"),
+                     ("🗑 Hapus", f"adm:promo:del:{gid}")])
+    rows.append(PANEL)
+    return kb(*rows)
+
+
+@router.callback_query(F.data == "adm:promo")
+async def promo_cb(c: CallbackQuery):
+    await show(c, await promo.status_block(), await promo_kb())
+
+
+@router.callback_query(F.data == "adm:promo:on")
+async def promo_on(c: CallbackQuery):
+    await db.set_setting("promo_enabled", "1")
+    await c.answer("Promosi group diaktifkan.")
+    await promo_cb(c)
+
+
+@router.callback_query(F.data == "adm:promo:off")
+async def promo_off(c: CallbackQuery):
+    await db.set_setting("promo_enabled", "0")
+    await c.answer("Promosi group dinonaktifkan.")
+    await promo_cb(c)
+
+
+@router.callback_query(F.data == "adm:promo:test")
+async def promo_test(c: CallbackQuery):
+    ok, fail = await promo.promo.send_test(c.bot)
+    await c.answer("Promosi terkirim." if ok else "Tidak ada group aktif.", show_alert=not ok)
+    await show(c, f"✅ Promosi sekarang: <b>{ok}</b> terkirim • <b>{fail}</b> gagal.\n\n"
+                  + await promo.status_block(), await promo_kb())
+
+
+@router.callback_query(F.data == "adm:promo:add")
+async def promo_add(c: CallbackQuery, state: FSMContext):
+    await prompt(c, state, A.promo_group,
+                 "📣 Kirim <b>forward pesan</b> dari group target, atau ketik ID group "
+                 "(angka negatif, misalnya <code>-1001234567890</code>).")
+
+
+@router.message(A.promo_group)
+async def promo_add_group(m: Message, state: FSMContext):
+    chat = m.forward_from_chat
+    if chat is not None and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
+        gid, title = chat.id, chat.title or ""
+    else:
+        raw = (m.text or "").strip()
+        if not re.fullmatch(r"-?\d+", raw) or int(raw) >= 0:
+            return await m.answer("⚠️ Kirim forward dari group atau ID group negatif.",
+                                  reply_markup=CANCEL)
+        gid, title = int(raw), ""
+    await state.clear()
+    fresh = await db.add_promo_group(gid, title)
+    label = esc(title or str(gid))
+    await m.answer(f"✅ Group <b>{label}</b> {'terdaftar' if fresh else 'sudah terdaftar dan diaktifkan'} untuk promosi.",
+                   reply_markup=await promo_kb())
+
+
+@router.callback_query(F.data.startswith("adm:promo:g:"))
+async def promo_toggle(c: CallbackQuery):
+    gid = int(c.data.split(":")[-1])
+    row = await db.q1("SELECT active FROM promo_groups WHERE chat_id=?", (gid,))
+    if not row:
+        return await c.answer("Group tidak ditemukan.", show_alert=True)
+    await db.set_promo_group(gid, not bool(row["active"]))
+    await c.answer("Status group diperbarui.")
+    await promo_cb(c)
+
+
+@router.callback_query(F.data.startswith("adm:promo:del:"))
+async def promo_delete(c: CallbackQuery):
+    gid = int(c.data.split(":")[-1])
+    await db.remove_promo_group(gid)
+    await c.answer("Group dihapus.")
+    await promo_cb(c)
+
+
+@router.callback_query(F.data == "adm:promo:sched")
+async def promo_schedule(c: CallbackQuery):
+    await show(c, "⏱ Pilih pola jeda promosi. Jam aktif tetap 08.00–21.00 WIB "
+                  "dan kuota harian dibatasi.", kb(
+        [("🐢 Santai · 3–6 jam", "adm:promo:set:180:360")],
+        [("⚖️ Normal · 2–5 jam", "adm:promo:set:120:300")],
+        [("⚡ Aktif · 1–2 jam", "adm:promo:set:60:120")],
+        [("🔙 Kembali", "adm:promo")],
+    ))
+
+
+@router.callback_query(F.data.startswith("adm:promo:set:"))
+async def promo_schedule_set(c: CallbackQuery):
+    _, _, _, low, high = c.data.split(":")
+    await db.set_setting("promo_min_gap", low)
+    await db.set_setting("promo_max_gap", high)
+    await c.answer("Jadwal promosi diperbarui.")
+    await promo_cb(c)
 
 
 # ---------- backup ----------

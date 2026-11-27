@@ -5,6 +5,7 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.enums import ChatType
 from aiogram.types import CallbackQuery, ChatMemberUpdated, Message
 
 import channels
@@ -161,6 +162,27 @@ async def gate_check(c: CallbackQuery, state: FSMContext):
 @router.chat_member()
 async def channel_left(ev: ChatMemberUpdated, bot: Bot):
     await channels.on_leave(ev, bot)
+
+
+@router.my_chat_member()
+async def bot_group_status(ev: ChatMemberUpdated, bot: Bot):
+    """Catat group saat bot ditambahkan, nonaktifkan saat bot dikeluarkan."""
+    if ev.chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
+        return
+    status = str(getattr(ev.new_chat_member, "status", "")).lower()
+    if status in ("member", "administrator", "creator"):
+        if await db.add_promo_group(ev.chat.id, ev.chat.title or ""):
+            for admin_id in ADMIN_IDS:
+                try:
+                    await bot.send_message(
+                        admin_id,
+                        f"📣 Group <b>{esc(ev.chat.title or 'Tanpa nama')}</b> terdaftar untuk promosi. "
+                        "Aktifkan di Panel Admin → Promosi Group.",
+                    )
+                except Exception:
+                    pass
+    elif status in ("left", "kicked"):
+        await db.set_promo_group(ev.chat.id, False)
 
 
 # ---------- deposit QRIS ----------

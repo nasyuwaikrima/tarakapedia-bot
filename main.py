@@ -11,6 +11,7 @@ from aiogram.types import CallbackQuery, ChatMemberUpdated
 import channels
 import commands
 import db
+import promo
 import ui
 from config import ADMIN_IDS, BOT_TOKEN, DB_PATH, PIXPAYZ_POLL_SECONDS
 from handlers import admin, user
@@ -182,6 +183,10 @@ async def worker(bot: Bot):
                     last_sync = time.monotonic()
         except Exception:
             log.exception("worker error")
+        try:
+            await promo.tick(bot)
+        except Exception:
+            log.exception("promo tick error")
         await asyncio.sleep(20)
 
 
