@@ -117,8 +117,9 @@ async def worker(bot: Bot):
                                                                      f"({ui.esc(o['service_name'])}) telah selesai!")
                             except Exception:
                                 pass
+                            buyer = await db.get_user(o["user_id"])
                             await ui.log_channel(bot, f"✅ <b>ORDER SELESAI</b> #{o['id']}\n"
-                                                      f"👤 {ui.user_link(o['user_id'])}\n"
+                                                      f"👤 {ui.public_user(o['user_id'], buyer['name'] if buyer else None, buyer['username'] if buyer else None)}\n"
                                                       f"📦 {ui.esc(o['service_name'])}")
 
                 refills = await db.q("SELECT * FROM orders WHERE refill_id IS NOT NULL "

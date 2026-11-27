@@ -409,7 +409,8 @@ async def bal_msg(m: Message, state: FSMContext):
         if not await db.debit(uid, amt, "admin", "Penyesuaian admin"):
             return await m.answer("⚠️ Saldo user tidak cukup.")
     await state.clear()
-    await ui.log_channel(m.bot, f"🛠 <b>PENYESUAIAN SALDO</b>\n👤 {ui.user_link(uid)}\n"
+    target = await db.get_user(uid)
+    await ui.log_channel(m.bot, f"🛠 <b>PENYESUAIAN SALDO</b>\n👤 {ui.public_user(uid, target['name'] if target else None, target['username'] if target else None)}\n"
                                 f"{'➕' if sign == '+' else '➖'} {rp(amt)} oleh admin")
     try:
         await m.bot.send_message(uid, f"🛠 Saldo Anda {'bertambah' if sign == '+' else 'berkurang'} <b>{rp(amt)}</b> oleh admin.")
@@ -827,7 +828,7 @@ async def _send_test_notice(bot, uid: int, name: str | None, username: str | Non
     await ui.log_channel(
         bot,
         f"🛒 <b>UJI ORDER BARU</b> #9001\n"
-        f"👤 {ui.user_link(uid, name, username)}\n"
+        f"👤 {ui.public_user(uid, name, username)}\n"
         f"📦 Instagram Followers 100 • {rp(15000)}\n"
         f"💰 Saldo : {rp(245000)}",
     )

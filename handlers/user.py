@@ -52,8 +52,11 @@ async def start(m: Message, command: CommandObject, state: FSMContext, is_new: b
     if await channels.gate(m, m.bot, welcome=is_new):
         return
     if is_new:
-        await ui.log_channel(m.bot, f"🆕 <b>MEMBER BARU</b>\n👤 {ui.user_link(m.from_user.id, m.from_user.full_name, m.from_user.username)}"
-                                  + (f"\n🎁 Ref: <code>{int(a[4:])}</code>" if a.startswith("ref_") and a[4:].isdigit() else ""))
+        ref_line = ""
+        if a.startswith("ref_") and a[4:].isdigit():
+            ref = await db.get_user(int(a[4:]))
+            ref_line = f"\n🎁 Ref: {ui.public_user(int(a[4:]), ref['name'] if ref else None, ref['username'] if ref else None)}"
+        await ui.log_channel(m.bot, f"🆕 <b>MEMBER BARU</b>\n👤 {ui.public_user(m.from_user.id, m.from_user.full_name, m.from_user.username)}{ref_line}")
     if a == "layanan":
         return await layanan_cmd(m, state)
     if a == "deposit":
@@ -239,7 +242,7 @@ async def _make_deposit(ev, uid: int, amount: int):
     did = await db.create_deposit(uid, amount, gateway.name, info["ref"], info)
     u = await db.get_user(uid)
     await ui.log_channel(ev.bot, f"🧾 <b>INVOICE BARU</b> #{did}\n"
-                                 f"👤 {ui.user_link(uid, u['name'] if u else None, u['username'] if u else None)}\n"
+                                 f"👤 {ui.public_user(uid, u['name'] if u else None, u['username'] if u else None)}\n"
                                  f"💰 {rp(amount)} • QRIS PixPayz")
     await _show_invoice(ev, did)
 
@@ -594,7 +597,7 @@ async def ord_ok(c: CallbackQuery, state: FSMContext):
     except Exception:
         await db.cancel_order(oid)
         await ui.log_channel(c.bot, f"↩️ <b>REFUND ORDER</b> #{oid}\n"
-                                    f"👤 {ui.user_link(c.from_user.id)}\n💸 {rp(price)} dikembalikan • gagal diproses")
+                                    f"👤 {ui.public_user(c.from_user.id)}\n💸 {rp(price)} dikembalikan • gagal diproses")
         return await show(c, "⚠️ Pesanan belum dapat diproses. Saldo Anda dikembalikan.", kb(BACK))
     await db.x("UPDATE orders SET provider_order_id=? WHERE id=?", (pid, oid))
     u = await db.get_user(c.from_user.id)
@@ -604,7 +607,7 @@ async def ord_ok(c: CallbackQuery, state: FSMContext):
     await ui.notify_admins(c.bot, f"🛒 Order baru <code>#{oid}</code> dari <code>{c.from_user.id}</code>\n"
                                   f"{esc(s['name'])} • {rp(price)} • provider <code>{esc(pid)}</code>")
     await ui.log_channel(c.bot, f"🛒 <b>ORDER BARU</b> #{oid}\n"
-                                f"👤 {ui.user_link(c.from_user.id, u['name'] if u else None, u['username'] if u else None)}\n"
+                                f"👤 {ui.public_user(c.from_user.id, u['name'] if u else None, u['username'] if u else None)}\n"
                                 f"📦 {esc(s['name'])} • 💸 {rp(price)}")
 
 
@@ -645,7 +648,7 @@ async def shop_buy(c: CallbackQuery):
                kb([("📱 Toko", "shop")], BACK))
     await ui.notify_admins(c.bot, f"📱 Pembelian <b>{esc(p['name'])}</b> oleh <code>{c.from_user.id}</code> ({rp(p['price'])})")
     await ui.log_channel(c.bot, f"📱 <b>PEMBELIAN</b>\n"
-                                f"👤 {ui.user_link(c.from_user.id, u['name'] if u else None, u['username'] if u else None)}\n"
+                                f"👤 {ui.public_user(c.from_user.id, u['name'] if u else None, u['username'] if u else None)}\n"
                                 f"📦 {esc(p['name'])} • 💸 {rp(p['price'])}")
 
 
@@ -786,7 +789,7 @@ async def claim(c: CallbackQuery):
         await c.answer(info, show_alert=True)
     else:
         await c.answer(f"🎉 +{rp(reward)} masuk ke saldo!", show_alert=True)
-        await ui.log_channel(c.bot, f"🎯 <b>MISI DIKLAIM</b>\n👤 {ui.user_link(c.from_user.id)}\n"
+        await ui.log_channel(c.bot, f"🎯 <b>MISI DIKLAIM</b>\n👤 {ui.public_user(c.from_user.id)}\n"
                                     f"🏆 {esc(info)} • 💰 +{rp(reward)}")
     await missions(c)
 

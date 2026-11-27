@@ -53,9 +53,16 @@ def clean_desc(text: str | None, limit: int = 320) -> str:
 
 
 def user_link(uid: int, name: str | None = None, username: str | None = None) -> str:
-    """Mention user yang bisa diklik di channel log."""
+    """Mention user yang bisa diklik (khusus pesan privat, bukan log channel)."""
     label = name or (f"@{username}" if username else f"ID {uid}")
     return f'<a href="tg://user?id={int(uid)}">{esc(label)[:60]}</a>'
+
+
+def public_user(uid: int, name: str | None = None, username: str | None = None) -> str:
+    """Identitas untuk log publik: username polos, tanpa mention atau ID."""
+    if username:
+        return esc(f"@{username}")[:50]
+    return esc((name or "Pengguna").strip())[:50]
 
 
 def channel_markup():
@@ -273,7 +280,7 @@ async def deposit_paid_notice(bot, result):
                                reply_markup=kb([("🛒 Order Layanan", "ord")], BACK))
     except Exception:
         pass
-    who = user_link(d["user_id"], u["name"] if u else None, u["username"] if u else None)
+    who = public_user(d["user_id"], u["name"] if u else None, u["username"] if u else None)
     await notify_admins(bot, f"💰 Deposit QRIS #{d['id']} dari <code>{d['user_id']}</code>: {rp(d['amount'])}")
     await log_channel(bot, f"✅ <b>DEPOSIT LUNAS</b> #{d['id']}\n👤 {who}\n💰 {rp(d['amount'])}\n"
                            f"🏦 Saldo sekarang: <b>{rp(u['balance'] if u else 0)}</b>")
@@ -288,8 +295,10 @@ async def referral_paid_notice(bot, oid: int, bonus: int, ref_id: int):
                                        f"<code>#{oid}</code> yang sudah selesai. Terima kasih.")
     except Exception:
         pass
+    ref = await db.get_user(ref_id)
     await log_channel(bot, f"🎁 <b>KOMISI REFERRAL</b> #{oid}\n"
-                           f"👤 <code>{ref_id}</code> • {rp(bonus)} dari margin order selesai")
+                           f"👤 {public_user(ref_id, ref['name'] if ref else None, ref['username'] if ref else None)}"
+                           f" • {rp(bonus)} dari margin order selesai")
 
 
 async def notify_admins(bot, text: str):

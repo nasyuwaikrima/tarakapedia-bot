@@ -123,7 +123,7 @@ async def gate(ev, bot: Bot | None = None, state=None, welcome: bool = False) ->
     old = await db.set_channel_status(uid, "out" if missing else "joined")
     if old != ("out" if missing else "joined"):
         u = await db.get_user(uid)
-        who = ui.user_link(uid, u["name"] if u else None, u["username"] if u else None)
+        who = ui.public_user(uid, u["name"] if u else None, u["username"] if u else None)
         if missing:
             await ui.log_channel(bot, f"⚠️ <b>REGISTER CHANNEL</b>\n👤 {who}\n"
                                       f"Keluar/belum join: {ui.esc(', '.join(x[1] for x in missing))}")
