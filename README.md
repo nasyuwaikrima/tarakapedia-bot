@@ -36,7 +36,7 @@ Bot SMM panel berbasis Telegram dengan **order real ke API MedanPedia**, katalog
 - ✅ **Harga dikelola admin**: margin global, harga manual per layanan, kunci harga, dan batas bawah harga agar tidak pernah rugi.
 - ✅ **Modal provider disembunyikan** dari semua tampilan user. User hanya melihat harga jual.
 - ✅ Menu utama dikirim sebagai **foto + caption** yang rapi; tombol disusun campuran **baris 2 tombol dan 1 tombol** agar rapi dan tidak melebihi lebar bubble. Fitur lanjutan masuk ke tombol **🧩 Lainnya**. Foto bisa diganti admin lewat panel. Tombol back/menu/invoice **mengedit pesan yang sama**, jadi tidak spam chat.
-- ✅ **Bot Commands Menu** (tombol di pojok kiri bawah Telegram) diisi lewat `set_my_commands`: `/start`, `/layanan`, `/deposit`, `/pesanan`, `/riwayat`, `/profil`, `/referral`, `/toko`, `/misi`, `/top`. Ini bukan inline keyboard/reply keyboard. Admin mendapat tambahan `/admin` & `/users`.
+- ✅ **Bot Commands Menu** (tombol di pojok kiri bawah Telegram) diisi lewat `set_my_commands`: `/start`, `/layanan`, `/deposit`, `/pesanan`, `/riwayat`, `/profil`, `/referral`, `/toko`, `/misi`, `/top`. Ini bukan inline keyboard/reply keyboard. Admin mendapat tambahan `/admin` & `/users` lewat scope chat per ID. Saat `ADMIN_IDS` diubah, scope chat lama otomatis dihapus saat bot restart (state disimpan di `data/applied_admin_commands.json`), jadi command admin tidak tertinggal di akun yang sudah bukan admin.
 - ✅ Kategori & layanan diurutkan **termurah → termahal** memakai harga jual efektif (modal + margin tidak pernah bocor).
 - ✅ **Top Transaksi** tampil di menu `/start` (3 teratas: username + total rupiah yang dibelanjakan) dan bisa dibuka sampai 10 teratas lewat satu tombol di home menu. Periode **Semua / Mingguan (7 hari) / Bulanan (30 hari)** dipilih lewat tab di dalam papan peringkat, supaya home menu tidak penuh.
 - ✅ Deposit **QRIS PixPayz real**: invoice dibuat otomatis, QRIS bisa dilihat ulang kapan saja lewat riwayat, status lunas dicek otomatis ke PixPayz tiap 20 detik (**tanpa webhook/domain**), invoice **tidak bisa dibatalkan**.
@@ -132,7 +132,7 @@ PIXPAYZ_POLL_SECONDS=20
 MAX_ACTIVE_DEPOSITS=3
 ```
 
-- `ADMIN_IDS` dipisah koma. Hanya ID ini yang bisa membuka `/admin` (admin dibebaskan dari gate channel).
+- `ADMIN_IDS` dipisah koma (pakai ID Telegram lengkap, bukan potongan). Hanya ID ini yang bisa membuka `/admin` (admin dibebaskan dari gate channel). Setelah mengubahnya, jalankan `sudo systemctl restart tarakapedia-bot` agar scope command lama dibersihkan.
 - `CHANNEL_REGISTRY` & `CHANNEL_LOG` = channel wajib. Tambahkan bot sebagai **admin** di keduanya supaya status keanggotaan terbaca dan log transaksi bisa dikirim.
 - `MEDANPEDIA_API_ID` dan `MEDANPEDIA_API_KEY` **wajib** diisi; jika kosong, order ditolak dan saldo user dikembalikan otomatis (tidak ada order demo).
 - `PIXPAYZ_API_KEY` **wajib** diisi untuk deposit QRIS; API key hanya dibaca dari `.env`, tidak pernah ditaruh di kode.
