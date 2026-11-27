@@ -11,7 +11,7 @@ import channels
 import db
 import limits
 import ui
-from config import BOT_NAME, MAX_ACTIVE_DEPOSITS
+from config import ADMIN_IDS, BOT_NAME, MAX_ACTIVE_DEPOSITS
 from payments import gateway
 from providers import LABEL_FIELDS, needs_quantity, provider, type_fields
 from ui import BACK, LINE, answer_cb, esc, kb, rp, show
@@ -49,14 +49,15 @@ async def start(m: Message, command: CommandObject, state: FSMContext, is_new: b
                          f"💰 Bonus: <b>{rp(bonus)}</b>")
             except Exception:
                 pass
-    if await channels.gate(m, m.bot, welcome=is_new):
-        return
-    if is_new:
+    if is_new and m.from_user.id not in ADMIN_IDS:
         ref_line = ""
         if a.startswith("ref_") and a[4:].isdigit():
             ref = await db.get_user(int(a[4:]))
             ref_line = f"\n🎁 Ref: {ui.public_user(int(a[4:]), ref['name'] if ref else None, ref['username'] if ref else None)}"
-        await ui.log_channel(m.bot, f"🆕 <b>MEMBER BARU</b>\n👤 {ui.public_user(m.from_user.id, m.from_user.full_name, m.from_user.username)}{ref_line}")
+        await ui.log_new_member(m.bot, m.from_user.id, m.from_user.full_name,
+                                m.from_user.username, ref_line)
+    if await channels.gate(m, m.bot, welcome=is_new, quiet=is_new):
+        return
     if a == "layanan":
         return await layanan_cmd(m, state)
     if a == "deposit":

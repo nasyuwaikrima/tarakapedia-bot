@@ -113,7 +113,8 @@ def join_caption(missing) -> str:
               "Channel dipakai sebagai registrasi &amp; log transaksi supaya tidak ketinggalan info.")
 
 
-async def gate(ev, bot: Bot | None = None, state=None, welcome: bool = False) -> bool:
+async def gate(ev, bot: Bot | None = None, state=None, welcome: bool = False,
+               quiet: bool = False) -> bool:
     """True kalau user digate (pesan join sudah dikirim)."""
     uid = getattr(getattr(ev, "from_user", None), "id", None)
     if uid is None or uid in ADMIN_IDS:
@@ -121,7 +122,7 @@ async def gate(ev, bot: Bot | None = None, state=None, welcome: bool = False) ->
     bot = bot or ev.bot
     missing = await missing_channels(bot, uid)
     old = await db.set_channel_status(uid, "out" if missing else "joined")
-    if old != ("out" if missing else "joined"):
+    if not quiet and old != ("out" if missing else "joined"):
         u = await db.get_user(uid)
         who = ui.public_user(uid, u["name"] if u else None, u["username"] if u else None)
         if missing:

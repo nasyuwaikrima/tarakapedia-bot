@@ -96,6 +96,28 @@ async def log_channel(bot, text: str, card_title: str | None = None):
         log.warning("Gagal kirim log teks ke channel: %s", e)
 
 
+async def log_new_member(bot, uid: int, name: str | None, username: str | None,
+                         ref_line: str = ""):
+    """Kirim poster welcome user baru ke channel log tanpa mention/ID."""
+    if not CHANNEL_LOG:
+        return
+    who = public_user(uid, name, username)
+    caption = f"🆕 <b>MEMBER BARU</b>\n👤 {who}{ref_line}"
+    if CHANNEL_REGISTRY_URL:
+        caption += f"\n\n🔗 Gabung: {CHANNEL_REGISTRY_URL}"
+    try:
+        await bot.send_photo(CHANNEL_LOG, photo=logcard.welcome_photo(who),
+                             caption=caption[:1000], reply_markup=channel_markup())
+        return
+    except Exception as e:
+        log.warning("Gagal kirim poster member baru ke channel: %s", e)
+    try:
+        await bot.send_message(CHANNEL_LOG, caption, reply_markup=channel_markup(),
+                               disable_web_page_preview=True)
+    except Exception as e:
+        log.warning("Gagal kirim log member baru ke channel: %s", e)
+
+
 async def welcome_card(ev, name: str, caption: str, markup=None):
     """Kirim kartu sambutan bergambar untuk user baru."""
     try:
