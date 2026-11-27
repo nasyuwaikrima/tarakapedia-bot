@@ -87,6 +87,7 @@ DEFAULT_SETTINGS = {
     "promo_hour_from": "8",   # jam aktif promosi (WIB)
     "promo_hour_to": "21",
     "promo_daily_limit": "20", # maksimal pesan promosi per group per hari
+    "promo_ai": "1",          # paraphrase AI gratis + fallback template
 }
 
 SERVICE_COLUMNS = {
@@ -139,6 +140,8 @@ async def _migrate():
         await set_setting("promo_max_gap", "40")
         await set_setting("promo_daily_limit", "20")
         await set_setting("promo_fast_applied", "1")
+    if not await q1("SELECT 1 FROM settings WHERE key='promo_ai'"):
+        await set_setting("promo_ai", "1")
 
 
 async def init(path: str):

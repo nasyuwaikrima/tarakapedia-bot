@@ -978,6 +978,8 @@ async def promo_kb():
         [("⛔ Nonaktifkan" if enabled else "✅ Aktifkan", "adm:promo:off" if enabled else "adm:promo:on"),
          ("✉️ Kirim Sekarang", "adm:promo:test")],
         [("➕ Tambah Group", "adm:promo:add"), ("⏱ Atur Jadwal", "adm:promo:sched")],
+        [("🤖 AI Teks: " + ("Aktif" if (await db.setting("promo_ai")) == "1" else "Nonaktif"),
+          "adm:promo:ai")],
     ]
     for g in await db.promo_groups(active_only=False):
         gid = int(g["chat_id"])
@@ -1005,6 +1007,14 @@ async def promo_on(c: CallbackQuery):
 async def promo_off(c: CallbackQuery):
     await db.set_setting("promo_enabled", "0")
     await c.answer("Promosi group dinonaktifkan.")
+    await promo_cb(c)
+
+
+@router.callback_query(F.data == "adm:promo:ai")
+async def promo_ai_toggle(c: CallbackQuery):
+    active = (await db.setting("promo_ai")) != "1"
+    await db.set_setting("promo_ai", "1" if active else "0")
+    await c.answer("AI teks diaktifkan." if active else "AI teks dinonaktifkan.")
     await promo_cb(c)
 
 

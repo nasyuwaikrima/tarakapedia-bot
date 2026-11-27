@@ -13,6 +13,7 @@ from datetime import datetime
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
+import ai_text
 import db
 import ui
 
@@ -116,6 +117,11 @@ def _message(index: int, prices: str = "") -> str:
     return text.format(bot=ui.BOT_URL, prices=prices)
 
 
+def _base(index: int) -> str:
+    """Materi tanpa data dinamis, dipakai sebagai prompt paraphrase AI."""
+    return _TEMPLATES[index][1].replace("{prices}", "").replace("{bot}", "").strip()
+
+
 class PromoEngine:
     """Satu promosi per siklus worker, bergilir, dengan jeda natural."""
 
@@ -125,7 +131,7 @@ class PromoEngine:
         self._cursor = 0
         self._last_tag: dict[int, str] = {}
 
-    def next_message(self, chat_id: int, prices: str = "") -> str:
+    def _pick(self, chat_id: int) -> int:
         previous = self._last_tag.get(chat_id)
         for step in range(len(self._order)):
             pos = (self._cursor + step) % len(self._order)
@@ -133,8 +139,27 @@ class PromoEngine:
             if _TEMPLATES[index][0] != previous:
                 self._cursor = (pos + 1) % len(self._order)
                 self._last_tag[chat_id] = _TEMPLATES[index][0]
-                return _message(index, prices)
-        return _message(self._cursor % len(_TEMPLATES), prices)
+                return index
+        return self._cursor % len(_TEMPLATES)
+
+    def next_message(self, chat_id: int, prices: str = "") -> str:
+        """Versi template murni (juga dipakai sebagai fallback)."""
+        return _message(self._pick(chat_id), prices)
+
+    async def message_for(self, chat_id: int, prices: str) -> str:
+        """Hybrid: paraphrase AI tervalidasi + data harga asli + CTA bot."""
+        index = self._pick(chat_id)
+        fallback = _message(index, prices)
+        if (await db.setting("promo_ai")) != "1":
+            return fallback
+        rewritten = await ai_text.variant(_TEMPLATES[index][0], _base(index))
+        if not rewritten:
+            return fallback
+        parts = [rewritten]
+        if "{prices}" in _TEMPLATES[index][1] and prices:
+            parts.append(prices)
+        parts.append(ui.BOT_URL)
+        return "\n\n".join(parts)
 
     @staticmethod
     def _gap_minutes(chat_id: int, day: str, low: int, high: int) -> int:
@@ -154,11 +179,11 @@ class PromoEngine:
 
     async def _settings(self):
         enabled = (await db.setting("promo_enabled")) == "1"
-        low = max(1, int(await db.setting("promo_min_gap") or 120))
-        high = max(low, int(await db.setting("promo_max_gap") or 300))
+        low = max(1, int(await db.setting("promo_min_gap") or 30))
+        high = max(low, int(await db.setting("promo_max_gap") or 40))
         frm = int(await db.setting("promo_hour_from") or 8)
         to = int(await db.setting("promo_hour_to") or 21)
-        limit = max(1, int(await db.setting("promo_daily_limit") or 4))
+        limit = max(1, int(await db.setting("promo_daily_limit") or 20))
         return enabled, low, high, frm, to, limit
 
     async def tick(self, bot) -> int:
@@ -179,7 +204,7 @@ class PromoEngine:
                 gap = self._gap_minutes(chat_id, db.today(), low, high) * 60
                 if (now - last).total_seconds() < gap:
                     continue
-            ok = await self._send(bot, chat_id, self.next_message(chat_id, prices))
+            ok = await self._send(bot, chat_id, await self.message_for(chat_id, prices))
             if ok:
                 await db.mark_promo_sent(chat_id)
                 return 1
@@ -212,7 +237,7 @@ class PromoEngine:
         ok = fail = 0
         for group in groups:
             gid = int(group["chat_id"])
-            sent = await self._send(bot, gid, self.next_message(gid, prices))
+            sent = await self._send(bot, gid, await self.message_for(gid, prices))
             if sent:
                 await db.mark_promo_sent(gid)
                 ok += 1
@@ -235,6 +260,7 @@ async def status_block() -> str:
         ("⏱ Jeda", f"<b>{low}–{high}</b> menit (diacak)"),
         ("🕒 Jam aktif", f"<b>{frm:02d}.00–{to:02d}.00</b> WIB"),
         ("🧾 Kuota", f"<b>{limit}</b> pesan per group per hari"),
+        ("🤖 AI teks", "<b>Aktif</b>" if (await db.setting("promo_ai")) == "1" else "<b>Nonaktif</b>"),
     ]
     block = ui.tree(rows, head="📢 <b>PROMOSI GROUP</b>")
     note = ("<i>Group terdeteksi otomatis saat bot ditambahkan atau menerima aktivitas. "
