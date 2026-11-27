@@ -879,9 +879,15 @@ async def set_edit_msg(m: Message, state: FSMContext):
 
 
 # ---------- TEMP: simulasi UI, hapus setelah pengetesan ----------
+async def _sim_event(bot, title: str, rows):
+    """TEMP: kirim satu event contoh memakai pipeline log produksi."""
+    await ui.log_channel(bot, tree(rows, head=f"<b>{title}</b>"),
+                         card_title=title, simulated=True)
+
+
 @router.callback_query(F.data == "adm:testsim")
 async def testsim_cb(c: CallbackQuery):
-    """TEMP: kirim simulasi data contoh ke channel log, bukan ke user."""
+    """TEMP: kirim rangkaian event contoh ke channel log, bukan ke user."""
     await c.answer("Mengirim simulasi ke channel log...")
     stats = ("┌ 💰 Saldo  : <b>Rp 3.700</b>\n"
              "├ 📦 Order  : <b>0</b> kali\n"
@@ -890,7 +896,40 @@ async def testsim_cb(c: CallbackQuery):
               "Data contoh · username @Naswa\n"
               "Tanpa kontak atau ID user asli")
     await ui.log_channel(c.bot, report, card_title="SIMULASI TAMPILAN")
-    await ui.log_new_member(c.bot, 0, "@Naswa", "Naswa")
+    await asyncio.sleep(1.0)
+    await ui.log_new_member(c.bot, 0, "@Naswa", "Naswa", simulated=True)
+    await asyncio.sleep(1.0)
+    await _sim_event(c.bot, "✅ DEPOSIT LUNAS #1042", [
+        ("👤 User", "@Naswa"),
+        ("🔖 Invoice", "<code>INV-SIM-1042</code>"),
+        ("💰 Nominal", "<b>Rp 25.000</b>"),
+        ("💳 Metode", "QRIS PixPayz"),
+        ("🏦 Saldo sekarang", "<b>Rp 28.700</b>"),
+    ])
+    await asyncio.sleep(1.0)
+    await _sim_event(c.bot, "🛒 ORDER BARU #1043", [
+        ("👤 User", "@Naswa"),
+        ("📦 Layanan", "Instagram Followers"),
+        ("🔢 Jumlah", "1.000"),
+        ("💸 Harga", "<b>Rp 15.000</b>"),
+        ("🔒 Status", "Diproses otomatis"),
+    ])
+    await asyncio.sleep(1.0)
+    await _sim_event(c.bot, "✅ ORDER SELESAI #1043", [
+        ("👤 User", "@Naswa"),
+        ("📦 Layanan", "Instagram Followers"),
+        ("🔢 Jumlah", "1.000"),
+        ("💸 Harga", "<b>Rp 15.000</b>"),
+        ("✅ Status", "Selesai · garansi aktif"),
+    ])
+    await asyncio.sleep(1.0)
+    await _sim_event(c.bot, "🎁 KOMISI REFERRAL #1043", [
+        ("👤 Penerima", "@Naswa"),
+        ("💰 Komisi", "<b>Rp 3.750</b>"),
+        ("📌 Sumber", "Margin order selesai"),
+        ("🆔 Order", "#1043"),
+        ("📅 Waktu", "27 Nov 2026 · 03.15 WIB"),
+    ])
     await c.message.answer("✅ Simulasi terkirim ke channel log. Data contoh, tanpa kontak & ID user asli.",
                            reply_markup=panel_kb())
 

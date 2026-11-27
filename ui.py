@@ -20,6 +20,8 @@ BOT_URL = f"https://t.me/{os.getenv('BOT_USERNAME', 'tarakapedia_bot').strip().l
 START = time.time()
 esc = html.escape
 BACK = [("⬅️ Kembali", "menu")]
+SIM_NOTE = "🧪 <i>Simulasi · data contoh</i>"
+SIM_FOOTER = "SIMULASI · Data contoh · Tarakapedia SMM Panel"
 
 STATUS_EMOJI = {"Pending": "🕒", "Processing": "⚙️", "Completed": "✅", "Canceled": "❌"}
 STATUS_ID = {"Pending": "Menunggu", "Processing": "Diproses", "Completed": "Selesai", "Canceled": "Dibatalkan"}
@@ -95,17 +97,21 @@ def channel_markup(include_main: bool = True, include_log: bool = False):
     return kb(*rows)
 
 
-async def log_channel(bot, text: str, card_title: str | None = None):
+async def log_channel(bot, text: str, card_title: str | None = None, simulated: bool = False):
     """Kirim log transaksi ke channel sebagai kartu dashboard + caption.
 
     Gambar dibuat otomatis per transaksi. Bila generate/kirim foto gagal, log
-    tetap terkirim sebagai teks agar transaksi tidak terdampak.
+    tetap terkirim sebagai teks agar transaksi tidak terdampak. Mode simulasi
+    memakai pipeline yang sama, hanya menambah penanda data contoh.
     """
     if not CHANNEL_LOG:
         return
-    caption = text + (f"\n\n🔗 Channel Utama: {CHANNEL_REGISTRY_URL}" if CHANNEL_REGISTRY_URL else "")
+    body = text + (f"\n\n{SIM_NOTE}" if simulated else "")
+    caption = body + (f"\n\n🔗 Channel Utama: {CHANNEL_REGISTRY_URL}" if CHANNEL_REGISTRY_URL else "")
     try:
-        await bot.send_photo(CHANNEL_LOG, photo=logcard.photo(text, card_title),
+        await bot.send_photo(CHANNEL_LOG,
+                             photo=logcard.photo(text, card_title,
+                                                 footer=SIM_FOOTER if simulated else None),
                              caption=caption[:1000], reply_markup=channel_markup())
         return
     except Exception as e:
@@ -138,7 +144,7 @@ async def info_channel(bot, text: str, card_title: str | None = None):
 
 
 async def log_new_member(bot, uid: int, name: str | None, username: str | None,
-                         ref_line: str = ""):
+                         ref_line: str = "", simulated: bool = False):
     """Kirim poster welcome user baru ke channel log tanpa mention/ID."""
     if not CHANNEL_LOG:
         return
@@ -148,6 +154,8 @@ async def log_new_member(bot, uid: int, name: str | None, username: str | None,
     if extra:
         rows.append(("🎁 Referral", re.sub(r"^🎁\s*(Ref:\s*)?", "", extra)))
     caption = tree(rows, head="🆕 <b>MEMBER BARU</b>")
+    if simulated:
+        caption += f"\n\n{SIM_NOTE}"
     if CHANNEL_REGISTRY_URL:
         caption += f"\n\n🔗 Channel Utama: {CHANNEL_REGISTRY_URL}"
     try:
