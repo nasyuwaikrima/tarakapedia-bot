@@ -398,9 +398,9 @@ async def _ord_groups(ev, page: int):
     pages = max(1, math.ceil(len(groups) / GROUP_PER))
     page = max(0, min(page, pages - 1))
     chunk = groups[page * GROUP_PER:(page + 1) * GROUP_PER]
-    rows = [[(f"{g['emoji']} {g['label'][:14]}\n💰 {rp(g['min_price'])} • {ui.num(g['count'])} layanan",
-              f"ord:p:{g['key']}:0") for g in chunk[i:i + 2]]
-            for i in range(0, len(chunk), 2)]
+    # Satu platform per baris: teks pendek tapi harga & jumlah tetap terbaca di HP.
+    rows = [[(f"{g['emoji']} {g['label'][:18]} • {rp(g['min_price'])} • {ui.num(g['count'])} layanan",
+              f"ord:p:{g['key']}:0")] for g in chunk]
     nav = []
     if page > 0:
         nav.append(("◀️", f"ord:g:{page - 1}"))
@@ -437,9 +437,8 @@ async def ord_group_cb(c: CallbackQuery):
     pages = max(1, math.ceil(len(cats) / CAT_PER))
     page = max(0, min(page, pages - 1))
     chunk = cats[page * CAT_PER:(page + 1) * CAT_PER]
-    rows = [[(f"{x['emoji']} {x['name'][:16]}\n💰 {rp(x['min_price'])} • {ui.num(x['count'])} layanan",
-              f"ord:c:{x['id']}:0") for x in chunk[i:i + 2]]
-            for i in range(0, len(chunk), 2)]
+    rows = [[(f"{x['emoji']} {x['name'][:24]} • {rp(x['min_price'])} • {ui.num(x['count'])} layanan",
+              f"ord:c:{x['id']}:0")] for x in chunk]
     nav = []
     if page > 0:
         nav.append(("◀️", f"ord:p:{key}:{page - 1}"))
@@ -470,7 +469,7 @@ async def ord_cat(c: CallbackQuery):
     rows = []
     for n, s in enumerate(chunk, page * per + 1):
         badge = "🛡" if s["provider_refill"] else "⚡"
-        rows.append([(f"{n:02d}. {s['name'][:22]}\n💰 {rp(s['_price'])} {badge}", f"ord:s:{s['id']}")])
+        rows.append([(f"{n:02d}. {s['name'][:24]} • {rp(s['_price'])} {badge}", f"ord:s:{s['id']}")])
     nav = []
     if page > 0:
         nav.append(("◀️", f"ord:c:{cid}:{page - 1}"))
