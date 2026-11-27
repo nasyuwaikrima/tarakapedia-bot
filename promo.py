@@ -7,6 +7,7 @@ pesan tidak terasa berulang.
 
 import logging
 import random
+import time
 import zlib
 from datetime import datetime
 
@@ -17,38 +18,66 @@ import ui
 
 log = logging.getLogger("tarakapedia.promo")
 
-# Materi ramah, profesional, dan tidak mengungkap pihak ketiga.
+# Materi menonjolkan merek & layanan, tetap profesional dan tanpa identitas pihak ketiga.
 _TEMPLATES = (
-    ("ig", "📸 Followers, likes, dan views Instagram bisa dipesan lewat bot. "
-           "Proses berjalan otomatis dan status order dapat dipantau langsung.\n\nDetail harga: {bot}"),
-    ("tiktok", "🎵 TikTok followers, likes, dan views tersedia dengan proses otomatis. "
-               "Cek pilihan layanan dan harga di bot.\n\n{bot}"),
-    ("deposit", "💳 Deposit QRIS otomatis: saldo masuk begitu pembayaran terverifikasi. "
-                "Tidak perlu konfirmasi manual.\n\nMulai dari {bot}"),
-    ("referral", "🎁 Ajak teman memakai layanan, dapatkan komisi dari transaksi yang selesai. "
-                 "Kode referral tersedia di menu Referral.\n\n{bot}"),
-    ("katalog", "🛒 Katalog layanan diperbarui berkala. Ratusan pilihan dengan harga jual "
-                "transparan dan jelas di awal.\n\nLihat katalog: {bot}"),
-    ("order", "⚙️ Order diproses otomatis 24/7. Setelah selesai, status dan riwayat transaksi "
-              "bisa dicek kapan saja lewat bot.\n\n{bot}"),
-    ("top", "🏆 Papan top transaksi mingguan sudah diperbarui. Cek posisi dan ikut serta "
-            "lewat bot.\n\n{bot}"),
-    ("mulai", "✨ Baru mencoba? Mulai dari menu Layanan Termurah, pilih layanan, lalu kirim "
-              "link sesuai instruksi.\n\n{bot}"),
-    ("channel", "📢 Info layanan dan perubahan harga diumumkan di channel utama. Bergabung "
-                "agar tidak ketinggalan pembaruan.\n\n{bot}"),
-    ("riwayat", "🔒 Saldo, order, dan komisi tercatat rapi di riwayat bot. Semua bisa "
-                "dipantau langsung.\n\n{bot}"),
-    ("produk", "📱 Katalog produk aplikasi juga tersedia. Stok dan harga ditampilkan jelas "
-               "sebelum pembelian.\n\n{bot}"),
-    ("bantuan", "🛠 Ada kendala saat order? Detail transaksi tersimpan rapi di bot sehingga "
-                "mudah dicek dan ditelusuri.\n\n{bot}"),
+    ("harga", "🔥 <b>TARAKAPEDIA SMM PANEL</b> — suntik sosmed dengan harga bersahabat.\n\n"
+              "Contoh harga mulai:\n{prices}\n\nOrder diproses otomatis 24/7. Cek katalog: {bot}"),
+    ("ig", "📸 <b>Tarakapedia SMM Panel</b> menyiapkan ratusan layanan Instagram: followers, "
+           "likes, story view, dan reels view. Pilih yang cocok, kirim link, sistem proses otomatis.\n\n{bot}"),
+    ("tiktok", "🎵 Suntik TikTok juga tersedia: followers, likes, view, dan save. "
+               "<b>Tarakapedia SMM Panel</b> menampilkan harga jelas di awal tanpa biaya tersembunyi.\n\n{bot}"),
+    ("wa_tg", "💬 WhatsApp channel member, Telegram post view, IG view, TikTok view — semuanya "
+              "ada di <b>Tarakapedia SMM Panel</b>. Contoh order yang paling sering masuk.\n\nCek harga: {bot}"),
+    ("murah", "⚡ Harga mulai puluhan rupiah per 1K untuk sejumlah layanan Instagram dan TikTok.\n\n"
+              "{prices}\n\nSemua tersedia di <b>Tarakapedia SMM Panel</b>: {bot}"),
+    ("deposit", "💳 <b>Tarakapedia SMM Panel</b> menyediakan deposit QRIS otomatis. Saldo masuk "
+                "begitu pembayaran terverifikasi, tanpa konfirmasi manual.\n\nMulai dari {bot}"),
+    ("proses", "🛒 Order di Tarakapedia diproses otomatis: pilih layanan, kirim link, lalu pantau "
+               "status lewat menu Pesanan Saya. Ratusan pilihan sosmed tersedia.\n\n{bot}"),
+    ("referral", "🎁 Ajak teman ke <b>Tarakapedia SMM Panel</b>, dapatkan komisi dari transaksi "
+                 "yang selesai. Kode referral tersedia di menu Referral.\n\n{bot}"),
+    ("order", "📦 Contoh order yang rutin masuk: Instagram view, TikTok view, Telegram post view, "
+              "dan WhatsApp channel member. Semua bisa dipesan langsung di bot.\n\n{bot}"),
+    ("mulai", "✨ Baru mencoba? Buka menu Layanan Termurah, pilih layanan, lalu kirim link sesuai "
+              "instruksi. <b>Tarakapedia SMM Panel</b> siap memproses otomatis.\n\n{bot}"),
+    ("channel", "📢 Info layanan dan pembaruan harga <b>Tarakapedia</b> diumumkan di channel utama. "
+                "Bergabung agar tidak ketinggalan pilihan terbaru.\n\n{bot}"),
+    ("lengkap", "🌐 Instagram, TikTok, YouTube, Facebook, Telegram, WhatsApp, dan masih banyak lagi. "
+                "Satu bot untuk kebutuhan sosmed: <b>Tarakapedia SMM Panel</b>.\n\n{bot}"),
+)
+
+_PRICE_CACHE_TTL = 1800
+_price_cache = (0.0, "")
+
+_PLATFORM_LABELS = (
+    ("instagram", "📸", "Instagram view"),
+    ("tiktok", "🎵", "TikTok view"),
+    ("telegram", "✈️", "Telegram post view"),
+    ("whatsapp", "💬", "WhatsApp channel member"),
 )
 
 
-def _message(index: int) -> str:
+async def cheap_products() -> str:
+    """Contoh harga jual termurah per platform (tanpa modal/ID provider)."""
+    global _price_cache
+    now = time.monotonic()
+    if _price_cache[0] and now - _price_cache[0] < _PRICE_CACHE_TTL:
+        return _price_cache[1]
+    rows = await db.sorted_services(await db.q("SELECT * FROM services WHERE active=1"))
+    lines = []
+    for key, emoji, label in _PLATFORM_LABELS:
+        prices = [int(s["_price"]) for s in rows
+                  if db.platform_of(s.get("name") or "")[0] == key and s["_price"]]
+        if prices:
+            lines.append(f"{emoji} {label} — <b>{ui.rp(min(prices))}</b>/1K")
+    result = "\n".join(lines)
+    _price_cache = (now, result)
+    return result
+
+
+def _message(index: int, prices: str = "") -> str:
     tag, text = _TEMPLATES[index]
-    return text.format(bot=ui.BOT_URL)
+    return text.format(bot=ui.BOT_URL, prices=prices)
 
 
 class PromoEngine:
@@ -60,7 +89,7 @@ class PromoEngine:
         self._cursor = 0
         self._last_tag: dict[int, str] = {}
 
-    def next_message(self, chat_id: int) -> str:
+    def next_message(self, chat_id: int, prices: str = "") -> str:
         previous = self._last_tag.get(chat_id)
         for step in range(len(self._order)):
             pos = (self._cursor + step) % len(self._order)
@@ -68,8 +97,8 @@ class PromoEngine:
             if _TEMPLATES[index][0] != previous:
                 self._cursor = (pos + 1) % len(self._order)
                 self._last_tag[chat_id] = _TEMPLATES[index][0]
-                return _message(index)
-        return _message(self._cursor % len(_TEMPLATES))
+                return _message(index, prices)
+        return _message(self._cursor % len(_TEMPLATES), prices)
 
     @staticmethod
     def _gap_minutes(chat_id: int, day: str, low: int, high: int) -> int:
@@ -104,6 +133,7 @@ class PromoEngine:
         now = datetime.now(db.WIB)
         if not (min(frm, to) <= now.hour <= max(frm, to)):
             return 0
+        prices = await cheap_products()
         for group in await db.promo_groups():
             chat_id = int(group["chat_id"])
             if int(group["sent_today"] or 0) >= limit:
@@ -113,7 +143,7 @@ class PromoEngine:
                 gap = self._gap_minutes(chat_id, db.today(), low, high) * 60
                 if (now - last).total_seconds() < gap:
                     continue
-            ok = await self._send(bot, chat_id, self.next_message(chat_id))
+            ok = await self._send(bot, chat_id, self.next_message(chat_id, prices))
             if ok:
                 await db.mark_promo_sent(chat_id)
                 return 1
@@ -142,10 +172,11 @@ class PromoEngine:
         groups = await db.promo_groups()
         if chat_id is not None:
             groups = [g for g in groups if int(g["chat_id"]) == int(chat_id)]
+        prices = await cheap_products()
         ok = fail = 0
         for group in groups:
             gid = int(group["chat_id"])
-            sent = await self._send(bot, gid, self.next_message(gid))
+            sent = await self._send(bot, gid, self.next_message(gid, prices))
             if sent:
                 await db.mark_promo_sent(gid)
                 ok += 1
