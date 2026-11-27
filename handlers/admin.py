@@ -79,6 +79,7 @@ def panel_kb():
         [("🎯 Misi", "adm:msn"), ("⚙️ Pengaturan", "adm:set")],
         [("🌐 Provider API", "adm:api"), ("📸 Foto Menu", "adm:menuphoto")],
         [("📢 Broadcast", "adm:bc"), ("💾 Backup DB", "adm:bak")],
+        [("🧪 Uji Notifikasi", "adm:testlog")],  # TEMP: hapus setelah pengetesan
         [("⬅️ Menu Utama", "menu")],
     )
 
@@ -818,6 +819,41 @@ async def set_edit_msg(m: Message, state: FSMContext):
     await db.set_setting(key, val)
     await state.clear()
     await m.answer("✅ Tersimpan.", reply_markup=kb([("⚙️ Pengaturan", "adm:set")], PANEL))
+
+
+# ---------- TEMP: uji notifikasi, hapus setelah pengetesan ----------
+async def _send_test_notice(bot, uid: int, name: str | None, username: str | None):
+    await ui.log_channel(
+        bot,
+        f"🛒 <b>UJI ORDER BARU</b> #9001\n"
+        f"👤 {ui.user_link(uid, name, username)}\n"
+        f"📦 Instagram Followers 100 • {rp(15000)}\n"
+        f"💰 Saldo : {rp(245000)}",
+    )
+    return await ui.catalog_update_notice(bot, {
+        "title": "UJI PEMBARUAN KATALOG",
+        "new_items": [{"name": "Instagram Followers Uji", "category": "Instagram", "price": 15000}],
+        "new_count": 1,
+        "price_changes": [{"name": "TikTok Views Uji", "old": 32000, "new": 40000}],
+        "changed_count": 1,
+    })
+
+
+@router.message(Command("testlog"))
+async def testlog_cmd(m: Message):
+    ok, fail = await _send_test_notice(m.bot, m.from_user.id,
+                                       m.from_user.full_name, m.from_user.username)
+    await m.answer(f"✅ Uji selesai.\nKartu log: terkirim\nNotifikasi: {ok} user • {fail} gagal",
+                   reply_markup=panel_kb())
+
+
+@router.callback_query(F.data == "adm:testlog")
+async def testlog_cb(c: CallbackQuery):
+    await c.answer("Mengirim notifikasi uji...")
+    ok, fail = await _send_test_notice(c.bot, c.from_user.id,
+                                       c.from_user.full_name, c.from_user.username)
+    await c.message.answer(f"✅ Uji selesai.\nKartu log: terkirim\nNotifikasi: {ok} user • {fail} gagal",
+                           reply_markup=panel_kb())
 
 
 # ---------- broadcast ----------
