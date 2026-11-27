@@ -979,7 +979,7 @@ async def promo_kb():
          ("✉️ Kirim Sekarang", "adm:promo:test")],
         [("➕ Tambah Group", "adm:promo:add"), ("⏱ Atur Jadwal", "adm:promo:sched")],
     ]
-    for g in await db.promo_groups():
+    for g in await db.promo_groups(active_only=False):
         gid = int(g["chat_id"])
         title = (g["title"] or str(gid)).strip()
         icon = "🔔" if g["active"] else "🔕"

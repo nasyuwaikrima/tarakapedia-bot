@@ -24,31 +24,58 @@ log = logging.getLogger("tarakapedia")
 class PrivateOnly(BaseMiddleware):
     """Bot khusus privat: abaikan pesan/perintah/callback di group & channel.
 
-    Dipesang di lapisan paling luar supaya tidak ada handler, middleware lain,
-    atau penulisan database yang terpicu oleh aktivitas group/channel.
-    Event keanggotaan channel tetap diteruskan agar pengingat join tetap jalan.
+    Dipesang di lapisan paling luar supaya tidak ada handler atau middleware
+    lain yang terpicu oleh aktivitas group/channel. Satu-satunya efek samping
+    adalah mendaftarkan group yang terdeteksi ke daftar promosi; statusnya
+    tetap diatur dari panel admin. Event keanggotaan channel diteruskan agar
+    pengingat join tetap jalan.
     """
 
     _MEMBER_EVENT = object()
+    _seen_groups: set[int] = set()
 
     @classmethod
-    def _chat_of(cls, event):
-        """Ambil chat dari Update maupun event langsung (dipakai test & polling)."""
-        nested = None
+    def _nested(cls, event):
         for attr in ("message", "edited_message", "channel_post", "callback_query",
                      "chat_member", "my_chat_member"):
             nested = getattr(event, attr, None)
             if nested is not None:
-                break
-        if isinstance(event, ChatMemberUpdated) or isinstance(nested, ChatMemberUpdated):
-            return cls._MEMBER_EVENT
-        nested = nested if nested is not None else event
+                return nested
+        return event
+
+    @classmethod
+    def _chat_object(cls, event):
+        """Objek Chat asli dari Update maupun event langsung."""
+        nested = cls._nested(event)
         chat = getattr(nested, "chat", None)
         if chat is None:
             chat = getattr(getattr(nested, "message", None), "chat", None)
         return chat
 
+    @classmethod
+    def _chat_of(cls, event):
+        """Chat atau penanda event keanggotaan (dipakai test & polling)."""
+        nested = cls._nested(event)
+        if isinstance(event, ChatMemberUpdated) or isinstance(nested, ChatMemberUpdated):
+            return cls._MEMBER_EVENT
+        return cls._chat_object(event)
+
+    @classmethod
+    async def _register_group(cls, chat):
+        """Catat group yang terlihat. Tidak mengirim balasan apa pun."""
+        if chat is None or getattr(chat, "type", None) not in (ChatType.GROUP, ChatType.SUPERGROUP):
+            return
+        gid = int(chat.id)
+        if gid in cls._seen_groups or getattr(db, "_db", None) is None:
+            return
+        cls._seen_groups.add(gid)
+        try:
+            await db.add_promo_group(gid, getattr(chat, "title", "") or "")
+        except Exception:
+            log.warning("Gagal mendaftarkan group %s untuk promosi", gid)
+
     async def __call__(self, handler, event, data):
+        await self._register_group(self._chat_object(event))
         chat = self._chat_of(event)
         if chat is self._MEMBER_EVENT:
             return await handler(event, data)

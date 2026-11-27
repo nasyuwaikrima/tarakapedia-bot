@@ -160,13 +160,16 @@ promo = PromoEngine()
 async def status_block() -> str:
     """Ringkasan konfigurasi promosi untuk panel admin."""
     enabled, low, high, frm, to, limit = await promo._settings()
-    groups = await db.promo_groups()
+    groups = await db.promo_groups(active_only=False)
     active = sum(1 for g in groups if g["active"])
     rows = [
         ("📣 Status", "<b>Aktif</b>" if enabled else "<b>Nonaktif</b>"),
-        ("👥 Group", f"<b>{active}</b> aktif dari {len(groups)} terdaftar"),
+        ("👥 Group", f"<b>{active}</b> aktif dari {len(groups)} terdeteksi"),
         ("⏱ Jeda", f"<b>{low}–{high}</b> menit (diacak)"),
         ("🕒 Jam aktif", f"<b>{frm:02d}.00–{to:02d}.00</b> WIB"),
         ("🧾 Kuota", f"<b>{limit}</b> pesan per group per hari"),
     ]
-    return ui.tree(rows, head="📢 <b>PROMOSI GROUP</b>")
+    block = ui.tree(rows, head="📢 <b>PROMOSI GROUP</b>")
+    note = ("<i>Group terdeteksi otomatis saat bot ditambahkan atau menerima aktivitas. "
+            "Status aktif/nonaktif diatur lewat tombol di bawah.</i>")
+    return block + "\n\n" + note
