@@ -1,4 +1,4 @@
-"""Gateway pembayaran QRIS PixPayz.
+"""Gateway pembayaran QRIS (identitas penyedia disamarkan di seluruh pesan).
 
 Endpoint (GET, query param apikey):
   /api/profile        -> profil & saldo merchant
@@ -21,7 +21,7 @@ from config import (PIXPAYZ_API_KEY, PIXPAYZ_BASE_URL, PIXPAYZ_MIN_INTERVAL,
 
 
 class GatewayError(Exception):
-    """Gagal komunikasi/validasi dari PixPayz."""
+    """Gagal komunikasi/validasi dari gateway QRIS."""
 
 
 PAID = {"paid", "success", "completed"}
@@ -60,7 +60,7 @@ class PixPayzGateway:
 
     async def _get(self, endpoint: str, **params: Any) -> dict:
         if not self.configured:
-            raise GatewayError("API key PixPayz belum diisi di file .env")
+            raise GatewayError("Kredensial gateway QRIS belum diisi di file .env")
         session = await self._session_get()
         query = {"apikey": self.api_key, **{k: v for k, v in params.items() if v is not None}}
         # Satu lock untuk seluruh proses: jeda antar request menjaga < 2 req/detik.
@@ -77,19 +77,19 @@ class PixPayzGateway:
                             continue
                         raw = await r.text()
                 except aiohttp.ClientError as e:
-                    raise GatewayError(f"Koneksi ke PixPayz gagal: {e}") from e
+                    raise GatewayError(f"Koneksi gateway QRIS gagal: {e}") from e
                 if r.status != 200:
-                    raise GatewayError(f"PixPayz merespons HTTP {r.status}: {raw[:120]}")
+                    raise GatewayError(f"Gateway QRIS merespons HTTP {r.status}: {raw[:120]}")
                 try:
                     js = json.loads(raw)
                 except json.JSONDecodeError as e:
-                    raise GatewayError("Respons PixPayz bukan JSON valid") from e
+                    raise GatewayError("Respons gateway QRIS bukan JSON valid") from e
                 if not isinstance(js, dict):
-                    raise GatewayError("Format respons PixPayz tidak dikenal")
+                    raise GatewayError("Format respons gateway QRIS tidak dikenal")
                 if js.get("success") is False:
-                    raise GatewayError(str(js.get("message") or "PixPayz menolak permintaan"))
+                    raise GatewayError(str(js.get("message") or "Gateway QRIS menolak permintaan"))
                 return js
-        raise GatewayError("PixPayz terus memberi 429 (terlalu banyak request)")
+        raise GatewayError("Gateway QRIS terus memberi 429 (terlalu banyak request)")
 
     async def profile(self) -> dict:
         js = await self._get("/api/profile")
@@ -104,7 +104,7 @@ class PixPayzGateway:
         js = await self._get("/api/createinvoice", amount=int(amount))
         invoice_id = js.get("invoice_id") or js.get("id")
         if not invoice_id:
-            raise GatewayError("PixPayz tidak mengembalikan invoice_id")
+            raise GatewayError("Gateway QRIS tidak mengembalikan invoice_id")
         return {
             "ref": str(invoice_id),
             "invoice_id": str(invoice_id),

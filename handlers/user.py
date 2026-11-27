@@ -184,7 +184,7 @@ async def dep_menu(c: CallbackQuery, state: FSMContext):
     limit, active = await _dep_limit(c.from_user.id)
     mn = int(await db.setting("min_deposit") or 0)
     t = tree([
-        ("💳 Metode", "<b>QRIS PixPayz</b>"),
+        ("💳 Metode", "<b>QRIS Otomatis</b>"),
         ("🔻 Minimal", f"<b>{rp(mn)}</b>"),
         ("🧾 Invoice aktif", f"<b>{len(active)}/{limit}</b> {ui.bar(len(active), limit)}"),
         ("⚡ Status", "Dicek otomatis tiap 20 detik"),
@@ -242,14 +242,14 @@ async def _make_deposit(ev, uid: int, amount: int):
     try:
         info = await gateway.create(0, amount)
     except Exception as e:
-        return await show(ev, f"⚠️ Gagal membuat invoice QRIS: {esc(str(e)[:160])}",
+        return await show(ev, f"⚠️ Gagal membuat invoice QRIS: {ui.safe_error(e, 160)}",
                           kb([("🔄 Coba Lagi", "dep")], BACK))
     did = await db.create_deposit(uid, amount, gateway.name, info["ref"], info)
     u = await db.get_user(uid)
     await ui.log_channel(ev.bot, tree([
         ("👤 User", ui.public_user(uid, u['name'] if u else None, u['username'] if u else None)),
         ("💰 Nominal", rp(amount)),
-        ("💳 Metode", "QRIS PixPayz"),
+        ("💳 Metode", "QRIS Otomatis"),
     ], head=f"🧾 <b>INVOICE BARU</b> #{did}"))
     await _show_invoice(ev, did)
 
@@ -288,7 +288,7 @@ async def dep_check(c: CallbackQuery):
     try:
         res = await gateway.check(d["invoice_id"] or d["ref"])
     except Exception as e:
-        return await answer_cb(c, f"⚠️ Cek gagal: {esc(str(e)[:140])}", True)
+        return await answer_cb(c, f"⚠️ Cek gagal: {ui.safe_error(e, 140)}", True)
     status = res["status"]
     if gateway.is_paid(status):
         result = await db.confirm_deposit_by_invoice(d["invoice_id"] or d["ref"])

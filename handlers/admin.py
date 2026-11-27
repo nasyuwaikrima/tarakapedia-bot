@@ -129,7 +129,7 @@ async def api_text(balance=None) -> str:
         ("⭐ Favorit saja", "Ya" if await db.setting('service_fav') == '1' else "Semua"),
         ("🔄 Auto sinkron", "✅ ON" if await db.setting('auto_sync') == '1' else "⛔ OFF"),
         ("📈 Margin", f"<b>{esc(pct)}%</b> + {rp(flat)} / 1K"),
-    ], head="🌐 <b>PROVIDER API · MEDANPEDIA</b>")
+    ], head="🌐 <b>PROVIDER API</b>")
     t += ("\n\n🔒 Modal provider tidak pernah ditampilkan ke user. Harga jual otomatis "
           "naik mengikuti modal agar bot tetap untung.")
     return t
@@ -169,7 +169,7 @@ async def api_sync(c: CallbackQuery):
         t += notice + "\n\nHarga jual otomatis menyesuaikan margin. Modal tetap tersembunyi."
         await show(c, t, api_kb())
     except Exception as e:
-        await show(c, f"⚠️ Gagal sinkron: {esc(str(e)[:200])}", api_kb())
+        await show(c, f"⚠️ Gagal sinkron: {ui.safe_error(e, 200)}", api_kb())
 
 
 @router.callback_query(F.data == "adm:apibal")
@@ -181,7 +181,7 @@ async def api_balance(c: CallbackQuery):
             raise RuntimeError("Saldo provider belum bisa dibaca")
         await show(c, await api_text(balance), api_kb())
     except Exception as e:
-        await answer_cb(c, f"⚠️ {esc(str(e)[:160])}", True)
+        await answer_cb(c, f"⚠️ {ui.safe_error(e, 160)}", True)
 
 
 @router.callback_query(F.data == "adm:apifav")
@@ -267,7 +267,7 @@ async def refill_msg(m: Message, state: FSMContext):
             await db.x("UPDATE orders SET refill_status=?, checked_at=? WHERE id=?", (st, db.now(), oid))
             result = f"📊 Status refill: <b>{esc(st)}</b>"
     except Exception as e:
-        result = f"⚠️ Gagal: {esc(str(e)[:160])}"
+        result = f"⚠️ Gagal: {ui.safe_error(e, 160)}"
     await state.clear()
     await m.answer(result, reply_markup=kb([("📦 Pesanan", "adm:ord")], PANEL))
 
@@ -905,7 +905,7 @@ async def testsim_cb(c: CallbackQuery):
         ("👤 User", "@Naswa"),
         ("🔖 Invoice", "<code>INV-SIM-1042</code>"),
         ("💰 Nominal", "<b>Rp 25.000</b>"),
-        ("💳 Metode", "QRIS PixPayz"),
+        ("💳 Metode", "QRIS Otomatis"),
         ("🏦 Saldo sekarang", "<b>Rp 28.700</b>"),
     ])
     await asyncio.sleep(1.0)

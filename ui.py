@@ -35,6 +35,17 @@ def num(n) -> str:
     return f"{int(n):,}".replace(",", ".")
 
 
+_BRAND = re.compile(r"pixpayz|medanpedia|api\.medanpedia\.co\.id", re.IGNORECASE)
+
+
+def safe_error(text, limit: int = 160) -> str:
+    """Pesan error aman untuk user: tanpa nama/URL penyedia atau kredensial."""
+    s = _BRAND.sub("penyedia layanan", str(text or ""))
+    s = re.sub(r"https?://\S+", "tautan layanan", s)
+    s = re.sub(r"(?i)(apikey|api_key|token)=[^\s&]+", r"\1=••••", s)
+    return esc(s[:limit])
+
+
 def tree(rows, head: str | None = None) -> str:
     """Format baris info dengan cabang ┌ ├ └ yang konsisten dan rapi."""
     items = list(rows)

@@ -130,7 +130,7 @@ class MedanPediaProvider:
 
     async def post(self, endpoint: str, **params: Any) -> dict:
         if not self.configured:
-            raise ProviderError("Kredensial MedanPedia belum diisi di file .env")
+            raise ProviderError("Kredensial provider SMM belum diisi di file .env")
         payload = {"api_id": self.api_id, "api_key": self.api_key}
         payload.update({k: v for k, v in params.items() if v is not None})
         session = await self._session_get()

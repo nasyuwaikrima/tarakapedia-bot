@@ -136,6 +136,7 @@ async def init(path: str):
     await _db.commit()
     await _migrate()
     await _seed()
+    await mask_catalog_codes()
 
 
 async def close():
@@ -232,6 +233,38 @@ async def get_or_create_category(name: str) -> int:
 
 
 # ---------- harga / sinkronisasi provider ----------
+_PROVIDER_CODE = re.compile(r"(?<![A-Za-z0-9])MP(?=\d|\b)", re.IGNORECASE)
+
+
+def mask_provider_code(text) -> str:
+    """Samarkan kode internal provider (MP, MP1, MP 5) jadi TP, TP1, TP 5.
+
+    Kode ini bukan identitas layanan yang perlu diketahui user, jadi diubah
+    sejak data masuk dan juga saat katalog lama dimuat ulang.
+    """
+    return _PROVIDER_CODE.sub("TP", str(text or ""))
+
+
+async def mask_catalog_codes() -> int:
+    """Ubah kode MP lama di katalog yang sudah tersimpan menjadi TP."""
+    changed = 0
+    for table, column in (("services", "name"), ("services", "description"),
+                          ("categories", "name")):
+        rows = await q(f"SELECT id,{column} AS value FROM {table}")
+        updates = []
+        for row in rows:
+            old = row["value"] or ""
+            new = mask_provider_code(old)
+            if new != old:
+                updates.append((new, row["id"]))
+        if updates:
+            await _db.executemany(f"UPDATE {table} SET {column}=? WHERE id=?", updates)
+            changed += len(updates)
+    if changed:
+        await _db.commit()
+    return changed
+
+
 def hitung_harga(modal: int, persen: int, flat: int = 0) -> int:
     """Harga jual minimal agar tidak rugi. Modal provider tidak pernah ditampilkan ke user."""
     if modal <= 0:
@@ -376,12 +409,12 @@ async def sync_services(items: list[dict]) -> dict:
     for it in items:
         pid = int(it["id"])
         modal = max(0, int(it.get("price") or 0))
-        name = str(it.get("name") or f"Layanan {pid}")
+        name = mask_provider_code(it.get("name") or f"Layanan {pid}")
         ptype = str(it.get("type") or "default")
-        category = str(it.get("category") or "Lainnya")
+        category = mask_provider_code(it.get("category") or "Lainnya")
         mn = max(0, int(it.get("min") or 0))
         mx = max(mn, int(it.get("max") or mn))
-        desc = str(it.get("description") or "")
+        desc = mask_provider_code(it.get("description") or "")
         refill = int(it.get("refill") or 0)
         avg = str(it.get("average_time") or "")
         cid = await get_or_create_category(category)
@@ -533,7 +566,7 @@ async def confirm_deposit(dep_id):
 
 
 async def confirm_deposit_by_invoice(invoice_id):
-    """Dipanggil saat PixPayz melaporkan status paid (cek manual/polling)."""
+    """Dipanggil saat gateway QRIS melaporkan status paid (cek manual/polling)."""
     d = await q1("SELECT * FROM deposits WHERE invoice_id=? OR ref=? ORDER BY id DESC LIMIT 1",
                  (str(invoice_id), str(invoice_id)))
     if not d:

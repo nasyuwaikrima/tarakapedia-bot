@@ -60,7 +60,7 @@ async def sync_catalog(bot: Bot | None = None, notify: bool = False) -> dict:
 
 
 async def poll_invoices(bot: Bot, offset: int = 0) -> int:
-    """Cek invoice QRIS pending ke PixPayz (maks 20 per siklus, bergilir)."""
+    """Cek invoice QRIS pending ke gateway (maks 20 per siklus, bergilir)."""
     rows = await db.q("SELECT * FROM deposits WHERE status='pending' AND invoice_id IS NOT NULL "
                       "AND invoice_id!='' ORDER BY id")
     if not rows:
@@ -169,9 +169,9 @@ async def main():
         except Exception:
             log.warning("Gagal sinkron katalog saat start", exc_info=True)
     else:
-        log.warning("Kredensial MedanPedia kosong — order real akan ditolak sampai .env diisi")
+        log.warning("Kredensial provider SMM kosong — order real akan ditolak sampai .env diisi")
     if not gateway.configured:
-        log.warning("API key PixPayz kosong — deposit QRIS belum bisa dibuat")
+        log.warning("Kredensial gateway QRIS kosong — deposit QRIS belum bisa dibuat")
     me = await bot.me()
     log.info("Bot @%s berjalan", me.username)
     try:
