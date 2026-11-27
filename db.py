@@ -355,7 +355,15 @@ async def grouped_categories() -> list[dict]:
         g["cats"] = sorted(g["cats"].values(),
                            key=lambda c: (c["min_price"], c["name"].lower()))
         out.append(g)
-    return sorted(out, key=lambda g: (g["min_price"], g["label"].lower()))
+    out = sorted(out, key=lambda g: (g["min_price"], g["label"].lower()))
+
+    # Preferensi katalog: WhatsApp menempati slot Twitch, Twitch pindah ke
+    # posisi WhatsApp. Urutan platform lain tetap mengikuti harga termurah.
+    idx_wa = next((i for i, g in enumerate(out) if g["key"] == "whatsapp"), None)
+    idx_tw = next((i for i, g in enumerate(out) if g["key"] == "twitch"), None)
+    if idx_wa is not None and idx_tw is not None and idx_wa != idx_tw:
+        out[idx_wa], out[idx_tw] = out[idx_tw], out[idx_wa]
+    return out
 
 
 async def sync_services(items: list[dict]) -> dict:
