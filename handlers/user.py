@@ -385,33 +385,85 @@ async def _lanjut(ev, state: FSMContext, s, d: dict):
     await _konfirmasi(ev, state, s, d)
 
 
+GROUP_PER = 8   # 4 baris x 2 platform per halaman
+CAT_PER = 6     # 3 baris x 2 sub-kategori per halaman
+SVC_PER = 6
+
+
+async def _ord_groups(ev, page: int):
+    """Halaman platform: Instagram, TikTok, YouTube, dll."""
+    groups = await db.grouped_categories()
+    if not groups:
+        return await show(ev, "Belum ada layanan tersedia. Hubungi admin ya, kak.", kb(BACK))
+    pages = max(1, math.ceil(len(groups) / GROUP_PER))
+    page = max(0, min(page, pages - 1))
+    chunk = groups[page * GROUP_PER:(page + 1) * GROUP_PER]
+    rows = [[(f"{g['emoji']} {g['label'][:14]} • {rp(g['min_price'])}", f"ord:p:{g['key']}:0")
+             for g in chunk[i:i + 2]] for i in range(0, len(chunk), 2)]
+    nav = []
+    if page > 0:
+        nav.append(("◀️", f"ord:g:{page - 1}"))
+    if page + 1 < pages:
+        nav.append(("▶️", f"ord:g:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([("⬅️ Menu", "menu")])
+    await show(ev, f"{LINE}\n🛒 <b>ORDER LAYANAN</b>\n{LINE}\n\n"
+                   f"📂 Dikelompokkan per platform • 💸 <b>termurah → termahal</b>\n"
+                   f"📊 {len(groups)} platform • halaman {page + 1}/{pages}\n\n"
+                   f"Pilih platform:", kb(*rows))
+
+
 @router.callback_query(F.data == "ord")
 async def ord_cats(c: CallbackQuery, state: FSMContext):
     await state.clear()
-    # Kategori diurutkan mengikuti layanan termurah di dalamnya.
-    svcs = await db.sorted_services(await db.q("SELECT * FROM services WHERE active=1"))
-    termurah = {}
-    for s in svcs:
-        termurah.setdefault(s["category_id"], s["_price"])
-    cats = [x for x in await db.q("SELECT * FROM categories") if x["id"] in termurah]
-    cats.sort(key=lambda x: (termurah[x["id"]], x["name"].lower()))
-    if not cats:
-        return await show(c, "Belum ada layanan tersedia. Hubungi admin ya, kak.", kb(BACK))
-    rows = [[(f"{x['emoji']} {x['name'][:15]} • {rp(termurah[x['id']])}", f"ord:c:{x['id']}:0")
-             for x in cats[i:i + 2]] for i in range(0, len(cats), 2)]
-    rows.append(BACK)
-    await show(c, f"{LINE}\n🛒 <b>ORDER LAYANAN</b>\n{LINE}\n\n"
-                  f"💸 Urutan kategori &amp; layanan: <b>termurah → termahal</b>.\n"
-                  f"Pilih kategori layanan:", kb(*rows))
+    await _ord_groups(c, 0)
+
+
+@router.callback_query(F.data.startswith("ord:g:"))
+async def ord_groups_cb(c: CallbackQuery):
+    await _ord_groups(c, int(c.data.split(":")[2]))
+
+
+@router.callback_query(F.data.startswith("ord:p:"))
+async def ord_group_cb(c: CallbackQuery):
+    _, _, key, page_s = c.data.split(":")
+    page = int(page_s)
+    group = next((g for g in await db.grouped_categories() if g["key"] == key), None)
+    if not group:
+        return await answer_cb(c, "Platform tidak tersedia.", True)
+    cats = group["cats"]
+    pages = max(1, math.ceil(len(cats) / CAT_PER))
+    page = max(0, min(page, pages - 1))
+    chunk = cats[page * CAT_PER:(page + 1) * CAT_PER]
+    rows = [[(f"{x['emoji']} {x['name'][:15]} • {rp(x['min_price'])}", f"ord:c:{x['id']}:0")
+             for x in chunk[i:i + 2]] for i in range(0, len(chunk), 2)]
+    nav = []
+    if page > 0:
+        nav.append(("◀️", f"ord:p:{key}:{page - 1}"))
+    if page + 1 < pages:
+        nav.append(("▶️", f"ord:p:{key}:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([("⬅️ Platform", "ord:g:0")])
+    await show(c, f"{LINE}\n{group['emoji']} <b>{esc(group['label'].upper())}</b>\n{LINE}\n\n"
+                  f"📁 {len(cats)} kategori • {ui.num(group['count'])} layanan\n"
+                  f"💸 Termurah dulu • halaman {page + 1}/{pages}\n\n"
+                  f"Pilih kategori:", kb(*rows))
 
 
 @router.callback_query(F.data.startswith("ord:c:"))
 async def ord_cat(c: CallbackQuery):
     _, _, cid, page = c.data.split(":")
-    cid, page, per = int(cid), int(page), 6
+    cid, page, per = int(cid), int(page), SVC_PER
     cat = await db.q1("SELECT * FROM categories WHERE id=?", (cid,))
+    if not cat:
+        return await answer_cb(c, "Kategori tidak tersedia.", True)
+    key, emoji, label = db.platform_of(cat["name"])
     svcs = await db.sorted_services(
         await db.q("SELECT * FROM services WHERE category_id=? AND active=1", (cid,)))
+    pages = max(1, math.ceil(len(svcs) / per))
+    page = max(0, min(page, pages - 1))
     chunk = svcs[page * per:(page + 1) * per]
     rows = []
     for n, s in enumerate(chunk, page * per + 1):
@@ -420,13 +472,14 @@ async def ord_cat(c: CallbackQuery):
     nav = []
     if page > 0:
         nav.append(("◀️", f"ord:c:{cid}:{page - 1}"))
-    if (page + 1) * per < len(svcs):
+    if page + 1 < pages:
         nav.append(("▶️", f"ord:c:{cid}:{page + 1}"))
     if nav:
         rows.append(nav)
-    rows.append([("⬅️ Kategori", "ord")])
+    rows.append([("⬅️ Platform", f"ord:p:{key}:0")])
     await show(c, f"{LINE}\n{cat['emoji']} <b>{esc(cat['name'].upper())}</b>\n{LINE}\n\n"
-                  f"💸 Termurah dulu • {len(svcs)} layanan • halaman {page + 1}\n"
+                  f"🏷 {emoji} {esc(label)}\n"
+                  f"💸 Termurah dulu • {len(svcs)} layanan • halaman {page + 1}/{pages}\n"
                   f"🛡 Garansi refill • ⚡ Proses cepat\n\nPilih layanan:", kb(*rows))
 
 

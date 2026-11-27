@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import re
 from datetime import datetime, timezone, timedelta
 
 import aiosqlite
@@ -267,6 +268,94 @@ async def sorted_services(rows) -> list[dict]:
         d["_price"] = max(base, hitung_harga(modal, pct, flat)) if modal else base
         out.append(d)
     return sorted(out, key=lambda d: (d["_price"], str(d.get("name") or "").lower()))
+
+
+# Katalog provider punya ratusan sub-kategori. Menu user dikelompokkan dulu
+# per platform supaya tidak menumpuk; kunci ASCII dipakai di callback Telegram.
+PLATFORM_MAP = [
+    ("instagram", "📸", "Instagram", ("instagram", "ig")),
+    ("tiktok", "🎵", "TikTok", ("tiktok", "tik tok")),
+    ("youtube", "▶️", "YouTube", ("youtube", "you tube", "yt")),
+    ("facebook", "📘", "Facebook", ("facebook", "fb")),
+    ("telegram", "✈️", "Telegram", ("telegram", "tg")),
+    ("twitter", "🐦", "Twitter / X", ("twitter", "x")),
+    ("whatsapp", "💬", "WhatsApp", ("whatsapp", "wa")),
+    ("spotify", "🎧", "Spotify", ("spotify",)),
+    ("shopee", "🛍", "Shopee", ("shopee",)),
+    ("tokopedia", "🛍", "Tokopedia", ("tokopedia",)),
+    ("lazada", "🛍", "Lazada", ("lazada",)),
+    ("bukalapak", "🛍", "Bukalapak", ("bukalapak",)),
+    ("threads", "🧵", "Threads", ("threads",)),
+    ("twitch", "🎮", "Twitch", ("twitch",)),
+    ("discord", "🎮", "Discord", ("discord",)),
+    ("roblox", "🎮", "Roblox", ("roblox",)),
+    ("soundcloud", "🎧", "SoundCloud", ("soundcloud", "sound cloud")),
+    ("audiomack", "🎧", "Audiomack", ("audiomack",)),
+    ("snackvideo", "🎬", "Snack Video", ("snackvideo", "snack video")),
+    ("linkedin", "💼", "LinkedIn", ("linkedin", "linked in")),
+    ("quora", "💬", "Quora", ("quora",)),
+    ("google", "📍", "Google", ("google map", "google")),
+    ("website", "🌐", "Website", ("website", "website traffic")),
+]
+
+
+def platform_of(text: str) -> tuple[str, str, str]:
+    """Deteksi platform dari nama kategori/layanan. Fallback: Lainnya."""
+    low = " " + re.sub(r"[^a-z0-9]+", " ", str(text or "").lower()) + " "
+    for key, emoji, label, needles in PLATFORM_MAP:
+        for needle in needles:
+            n = re.sub(r"[^a-z0-9]+", " ", needle).strip()
+            if not n:
+                continue
+            if len(n) <= 2:
+                if f" {n} " in low:
+                    return key, emoji, label
+            elif n in low:
+                return key, emoji, label
+    return "lainnya", "📁", "Lainnya"
+
+
+async def grouped_categories() -> list[dict]:
+    """Platform → sub-kategori, lengkap dengan jumlah & harga termurah.
+
+    Memakai harga efektif dari ``sorted_services`` dan tidak menambah query
+    per layanan. Kategori tanpa layanan aktif otomatis tidak muncul.
+    """
+    svcs = await sorted_services(await q("SELECT * FROM services WHERE active=1"))
+    if not svcs:
+        return []
+    cats = {int(r["id"]): dict(r) for r in await q("SELECT * FROM categories")}
+    groups: dict[str, dict] = {}
+
+    for s in svcs:
+        cid = int(s.get("category_id") or 0)
+        cat = cats.get(cid) or {"id": cid, "name": "Lainnya", "emoji": "📁"}
+        cat_name = str(cat.get("name") or "Lainnya")
+        svc_name = str(s.get("name") or "")
+        key, emoji, label = platform_of(f"{cat_name} {svc_name}")
+
+        g = groups.setdefault(key, {
+            "key": key, "emoji": emoji, "label": label,
+            "count": 0, "min_price": None, "cats": {},
+        })
+        g["count"] += 1
+        if g["min_price"] is None or s["_price"] < g["min_price"]:
+            g["min_price"] = s["_price"]
+
+        c = g["cats"].setdefault(cid, {
+            "id": cid, "name": cat_name, "emoji": cat.get("emoji") or "📁",
+            "count": 0, "min_price": None,
+        })
+        c["count"] += 1
+        if c["min_price"] is None or s["_price"] < c["min_price"]:
+            c["min_price"] = s["_price"]
+
+    out = []
+    for g in groups.values():
+        g["cats"] = sorted(g["cats"].values(),
+                           key=lambda c: (c["min_price"], c["name"].lower()))
+        out.append(g)
+    return sorted(out, key=lambda g: (g["min_price"], g["label"].lower()))
 
 
 async def sync_services(items: list[dict]) -> dict:
