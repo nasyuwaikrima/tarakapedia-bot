@@ -889,13 +889,15 @@ async def _sim_event(bot, title: str, rows):
 async def testsim_cb(c: CallbackQuery):
     """TEMP: kirim rangkaian event contoh ke channel log, bukan ke user."""
     await c.answer("Mengirim simulasi ke channel log...")
-    stats = ("┌ 💰 Saldo  : <b>Rp 3.700</b>\n"
-             "├ 📦 Order  : <b>0</b> kali\n"
-             "└ 👥 Member : <b>1</b> orang")
-    report = (f"🧪 <b>SIMULASI TAMPILAN</b>\n\n{stats}\n\n"
-              "Data contoh · username @Naswa\n"
-              "Tanpa kontak atau ID user asli")
-    await ui.log_channel(c.bot, report, card_title="SIMULASI TAMPILAN")
+    report = ("🧪 <b>SIMULASI CHANNEL LOG</b>\n\n"
+              "┌ 📤 Tujuan : Channel Aktivitas\n"
+              "├ 🧩 Event : <b>5 contoh</b>\n"
+              "├ 💰 Saldo awal : <b>Rp 3.700</b>\n"
+              "├ 📦 Order awal : <b>0</b> kali\n"
+              "└ 👥 Member : <b>1</b> orang\n\n"
+              "Kondisi awal sebelum event contoh dijalankan.\n"
+              "Data dummy @Naswa · tanpa kontak &amp; ID user.")
+    await ui.log_channel(c.bot, report, card_title="SIMULASI CHANNEL LOG")
     await asyncio.sleep(1.0)
     await ui.log_new_member(c.bot, 0, "@Naswa", "Naswa", simulated=True)
     await asyncio.sleep(1.0)
