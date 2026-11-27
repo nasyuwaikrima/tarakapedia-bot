@@ -21,18 +21,18 @@ log = logging.getLogger("tarakapedia.promo")
 
 # Kalimat pembuka; tabel harga asli disisipkan lewat {catalog}.
 _TEMPLATES = (
-    ("harga", "💎 <b>Tarakapedia SMM Panel</b> — daftar harga jual layanan sosmed terbaru. "
-              "Transparan, tanpa biaya tersembunyi, diproses otomatis.\n\n{catalog}"),
-    ("pilih", "🔥 Cek harga Instagram, TikTok, Telegram, dan WhatsApp di Tarakapedia. "
-              "Pilih layanan, kirim link, order langsung berjalan otomatis.\n\n{catalog}"),
+    ("harga", "💎 <b>Tarakapedia SMM Panel</b> — murah, cepat, otomatis. Berikut harga jual "
+              "layanan sosmed terbaru, transparan tanpa biaya tersembunyi.\n\n{catalog}"),
+    ("pilih", "🔥 Suntik sosmed di Tarakapedia: murah cepat, tanpa ribet. Cek harga "
+              "Instagram, TikTok, Telegram, dan WhatsApp di bawah ini.\n\n{catalog}"),
     ("ig", "📸 Suntik Instagram jadi lebih hemat. Berikut contoh harga jual per seribu "
            "yang tersedia sekarang di <b>Tarakapedia</b>.\n\n{catalog}"),
     ("tiktok", "🎵 Suntik TikTok: view, like, followers, dan save dengan harga jelas di awal. "
                "Lihat daftar harganya di <b>Tarakapedia SMM Panel</b>.\n\n{catalog}"),
     ("wa_tg", "💬 WhatsApp channel member dan Telegram post view ikut tersedia. "
               "Ini contoh harga termurah di Tarakapedia.\n\n{catalog}"),
-    ("murah", "⚡ Harga mulai puluhan rupiah per seribu untuk sejumlah layanan. "
-              "Semua bisa dipesan langsung lewat bot.\n\n{catalog}"),
+    ("murah", "⚡ Tarakapedia SMM Panel murah cepat: harga mulai puluhan rupiah per seribu "
+              "untuk sejumlah layanan. Semua bisa dipesan langsung lewat bot.\n\n{catalog}"),
     ("deposit", "💳 Deposit QRIS otomatis di Tarakapedia: saldo masuk setelah pembayaran "
                 "terverifikasi, lalu langsung dipakai untuk order.\n\n{catalog}"),
     ("cara", "🧾 Cara order: pilih layanan, masukkan jumlah dan link, bayar dari saldo, "
@@ -55,8 +55,8 @@ _TEMPLATES = (
                "Silakan pilih yang sesuai kebutuhan.\n\n{catalog}"),
 )
 
-_PRICE_CACHE_TTL = 1800
-_price_cache = (0.0, "")
+_CATALOG_CACHE_TTL = 1800
+_catalog_cache = (0.0, {})
 
 _CATALOG_GROUPS = (
     ("instagram", "📸", "INSTAGRAM", (
@@ -80,14 +80,14 @@ _CATALOG_GROUPS = (
 )
 
 
-async def cheap_catalog() -> str:
-    """Tabel harga jual murah per platform, rapi & tanpa data internal."""
-    global _price_cache
+async def catalog_data() -> dict:
+    """Harga termurah per layanan & platform, di-cache 30 menit."""
+    global _catalog_cache
     now = time.monotonic()
-    if _price_cache[0] and now - _price_cache[0] < _PRICE_CACHE_TTL:
-        return _price_cache[1]
+    if _catalog_cache[0] and _catalog_cache[1] and now - _catalog_cache[0] < _CATALOG_CACHE_TTL:
+        return _catalog_cache[1]
     rows = await db.sorted_services(await db.q("SELECT * FROM services WHERE active=1"))
-    blocks = []
+    data = {}
     for key, emoji, title, items in _CATALOG_GROUPS:
         platform_rows = [s for s in rows if db.platform_of(s.get("name") or "")[0] == key]
         picked = []
@@ -99,23 +99,92 @@ async def cheap_catalog() -> str:
                     matches.append(int(s["_price"]))
             if matches:
                 picked.append((label, min(matches)))
-        if not picked:
+        if picked:
+            data[key] = {"emoji": emoji, "title": title, "items": sorted(picked, key=lambda x: x[1])}
+    _catalog_cache = (now, data)
+    return data
+
+
+def _dotted(label: str, width: int = 18) -> str:
+    return label.ljust(width, ".")
+
+
+def _price_lines(items, branch: bool = False) -> list[str]:
+    out = []
+    for i, (label, price) in enumerate(items):
+        prefix = ("└" if i == len(items) - 1 else "├") + " " if branch else ""
+        out.append(f"{prefix}{_dotted(label)} {ui.rp(price)}/1K")
+    return out
+
+
+def _render_full(data) -> str:
+    blocks = []
+    for g in data.values():
+        code = "\n".join(_price_lines(g["items"], branch=True))
+        blocks.append(f"{g['emoji']} <b>{g['title']}</b>\n<code>{code}</code>")
+    return "\n\n".join(blocks) or "<i>Belum ada layanan aktif.</i>"
+
+
+def _render_spotlight(data, key) -> str:
+    g = data.get(key)
+    if not g:
+        return _render_full(data)
+    code = "\n".join(_price_lines(g["items"]))
+    return f"🔥 <b>{g['title']} MURAH &amp; CEPAT</b>\n<code>{code}</code>"
+
+
+def _render_picks(data) -> str:
+    short = {"instagram": "IG", "tiktok": "TikTok", "telegram": "TG", "whatsapp": "WA"}
+    picks = []
+    for key, g in data.items():
+        if g["items"]:
+            label, price = g["items"][0]
+            picks.append((f"{short.get(key, key.upper())} {label}", price))
+    picks.sort(key=lambda x: x[1])
+    code = "\n".join(f"{_dotted(label, 20)} {ui.rp(price)}/1K" for label, price in picks)
+    return "⚡ <b>PILIHAN MURAH TARAKAPEDIA</b>\n<code>" + code + "</code>"
+
+
+def _render_pair(data, keys) -> str:
+    blocks = []
+    for key in keys:
+        g = data.get(key)
+        if not g:
             continue
-        picked.sort(key=lambda x: x[1])
-        lines = []
-        for i, (label, price) in enumerate(picked):
-            branch = "└" if i == len(picked) - 1 else "├"
-            dotted = label.ljust(18, ".")
-            lines.append(f"{branch} {dotted} {ui.rp(price)}/1K")
-        blocks.append(f"{emoji} <b>{title}</b>\n<code>" + "\n".join(lines) + "</code>")
-    result = "\n\n".join(blocks) or "<i>Belum ada layanan aktif.</i>"
-    _price_cache = (now, result)
-    return result
+        code = "\n".join(_price_lines(g["items"][:2], branch=True))
+        blocks.append(f"{g['emoji']} <b>{g['title']}</b>\n<code>{code}</code>")
+    return "\n\n".join(blocks) or _render_full(data)
 
 
-def _message(index: int, catalog: str = "") -> str:
+async def catalog_variants() -> list[str]:
+    """Empat tampilan harga bergilir supaya promosi tidak kaku."""
+    data = await catalog_data()
+    keys = [k for k in data if data[k]["items"]]
+    at = lambda i: keys[i % len(keys)] if keys else None
+    return [
+        _render_full(data),
+        _render_spotlight(data, at(0)),
+        _render_picks(data),
+        _render_pair(data, [at(1), at(2)] if len(keys) > 1 else keys),
+    ]
+
+
+async def cheap_catalog() -> str:
+    """Tampilan lengkap (kompatibel dengan pemanggil lama)."""
+    return (await catalog_variants())[0]
+
+
+def _catalog_for(index: int, catalogs) -> str:
+    if isinstance(catalogs, str):
+        return catalogs
+    if not catalogs:
+        return ""
+    return catalogs[index % len(catalogs)]
+
+
+def _message(index: int, catalogs="") -> str:
     """Versi template murni (juga dipakai sebagai fallback AI)."""
-    intro = _TEMPLATES[index][1].replace("{catalog}", catalog)
+    intro = _TEMPLATES[index][1].replace("{catalog}", _catalog_for(index, catalogs))
     return intro + "\n\n" + ui.BOT_URL
 
 
@@ -144,10 +213,10 @@ class PromoEngine:
                 return index
         return self._cursor % len(_TEMPLATES)
 
-    def next_message(self, chat_id: int, catalog: str = "") -> str:
-        return _message(self._pick(chat_id), catalog)
+    def next_message(self, chat_id: int, catalogs="") -> str:
+        return _message(self._pick(chat_id), catalogs)
 
-    async def message_for(self, chat_id: int, catalog: str) -> str:
+    async def message_for(self, chat_id: int, catalogs) -> str:
         """AI hanya mengubah pembuka; tabel harga & CTA tetap utuh."""
         index = self._pick(chat_id)
         intro = _base(index)
@@ -155,7 +224,7 @@ class PromoEngine:
             rewritten = await ai_text.variant(_TEMPLATES[index][0], intro)
             if rewritten:
                 intro = rewritten
-        return intro + "\n\n" + catalog + "\n\n" + ui.BOT_URL
+        return intro + "\n\n" + _catalog_for(index, catalogs) + "\n\n" + ui.BOT_URL
 
     @staticmethod
     def _gap_minutes(chat_id: int, day: str, low: int, high: int) -> int:
@@ -190,7 +259,7 @@ class PromoEngine:
         now = datetime.now(db.WIB)
         if not (min(frm, to) <= now.hour <= max(frm, to)):
             return 0
-        catalog = await cheap_catalog()
+        catalogs = await catalog_variants()
         for group in await db.promo_groups():
             chat_id = int(group["chat_id"])
             if int(group["sent_today"] or 0) >= limit:
@@ -200,7 +269,7 @@ class PromoEngine:
                 gap = self._gap_minutes(chat_id, db.today(), low, high) * 60
                 if (now - last).total_seconds() < gap:
                     continue
-            ok = await self._send(bot, chat_id, await self.message_for(chat_id, catalog))
+            ok = await self._send(bot, chat_id, await self.message_for(chat_id, catalogs))
             if ok:
                 await db.mark_promo_sent(chat_id)
                 return 1
@@ -229,11 +298,11 @@ class PromoEngine:
         groups = await db.promo_groups()
         if chat_id is not None:
             groups = [g for g in groups if int(g["chat_id"]) == int(chat_id)]
-        catalog = await cheap_catalog()
+        catalogs = await catalog_variants()
         ok = fail = 0
         for group in groups:
             gid = int(group["chat_id"])
-            sent = await self._send(bot, gid, await self.message_for(gid, catalog))
+            sent = await self._send(bot, gid, await self.message_for(gid, catalogs))
             if sent:
                 await db.mark_promo_sent(gid)
                 ok += 1
