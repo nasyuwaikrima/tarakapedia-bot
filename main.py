@@ -4,9 +4,9 @@ import time
 
 from aiogram import BaseMiddleware, Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram.enums import ChatType, ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, ChatMemberUpdated
 
 import channels
 import commands
@@ -18,6 +18,42 @@ from payments import gateway
 from providers import provider
 
 log = logging.getLogger("tarakapedia")
+
+
+class PrivateOnly(BaseMiddleware):
+    """Bot khusus privat: abaikan pesan/perintah/callback di group & channel.
+
+    Dipesang di lapisan paling luar supaya tidak ada handler, middleware lain,
+    atau penulisan database yang terpicu oleh aktivitas group/channel.
+    Event keanggotaan channel tetap diteruskan agar pengingat join tetap jalan.
+    """
+
+    _MEMBER_EVENT = object()
+
+    @classmethod
+    def _chat_of(cls, event):
+        """Ambil chat dari Update maupun event langsung (dipakai test & polling)."""
+        nested = None
+        for attr in ("message", "edited_message", "channel_post", "callback_query",
+                     "chat_member", "my_chat_member"):
+            nested = getattr(event, attr, None)
+            if nested is not None:
+                break
+        if isinstance(event, ChatMemberUpdated) or isinstance(nested, ChatMemberUpdated):
+            return cls._MEMBER_EVENT
+        nested = nested if nested is not None else event
+        chat = getattr(nested, "chat", None)
+        if chat is None:
+            chat = getattr(getattr(nested, "message", None), "chat", None)
+        return chat
+
+    async def __call__(self, handler, event, data):
+        chat = self._chat_of(event)
+        if chat is self._MEMBER_EVENT:
+            return await handler(event, data)
+        if chat is None or getattr(chat, "type", None) != ChatType.PRIVATE:
+            return None
+        return await handler(event, data)
 
 
 class Guard(BaseMiddleware):
@@ -156,6 +192,7 @@ async def main():
     await db.init(DB_PATH)
     bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
+    dp.update.outer_middleware(PrivateOnly())
     dp.message.outer_middleware(Guard())
     dp.callback_query.outer_middleware(Guard())
     dp.message.outer_middleware(channels.GateMiddleware())
