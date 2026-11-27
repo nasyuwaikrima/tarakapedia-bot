@@ -184,7 +184,7 @@ async def worker(bot: Bot):
         except Exception:
             log.exception("worker error")
         try:
-            await promo.tick(bot)
+            await promo.promo.tick(bot)
         except Exception:
             log.exception("promo tick error")
         await asyncio.sleep(20)
