@@ -1064,9 +1064,9 @@ async def promo_delete(c: CallbackQuery):
 async def promo_schedule(c: CallbackQuery):
     await show(c, "⏱ Pilih pola jeda promosi. Jam aktif tetap 08.00–21.00 WIB "
                   "dan kuota harian dibatasi.", kb(
+        [("🔥 Cepat · 30–40 menit", "adm:promo:set:30:40")],
+        [("⚖️ Sedang · 1–2 jam", "adm:promo:set:60:120")],
         [("🐢 Santai · 3–6 jam", "adm:promo:set:180:360")],
-        [("⚖️ Normal · 2–5 jam", "adm:promo:set:120:300")],
-        [("⚡ Aktif · 1–2 jam", "adm:promo:set:60:120")],
         [("🔙 Kembali", "adm:promo")],
     ))
 

@@ -82,11 +82,11 @@ DEFAULT_SETTINGS = {
     "service_fav": "0",       # hanya ambil layanan favorit provider
     "max_active_deposit": "3",  # batas invoice aktif per user
     "promo_enabled": "0",     # promosi group hanya jalan setelah diaktifkan admin
-    "promo_min_gap": "120",   # jeda minimal antar promosi per group (menit)
-    "promo_max_gap": "300",   # jeda maksimal antar promosi per group (menit)
+    "promo_min_gap": "30",    # jeda minimal antar promosi per group (menit)
+    "promo_max_gap": "40",    # jeda maksimal antar promosi per group (menit)
     "promo_hour_from": "8",   # jam aktif promosi (WIB)
     "promo_hour_to": "21",
-    "promo_daily_limit": "4", # maksimal pesan promosi per group per hari
+    "promo_daily_limit": "20", # maksimal pesan promosi per group per hari
 }
 
 SERVICE_COLUMNS = {
@@ -133,6 +133,12 @@ async def _migrate():
         if (await setting("ref_signup_bonus")) == "500":
             await set_setting("ref_signup_bonus", "0")
         await set_setting("ref_safe_applied", "1")
+    # Sekali saja: promosi dinaikkan ke pola cepat (~30 menit) dengan kuota aman.
+    if not await q1("SELECT 1 FROM settings WHERE key='promo_fast_applied'"):
+        await set_setting("promo_min_gap", "30")
+        await set_setting("promo_max_gap", "40")
+        await set_setting("promo_daily_limit", "20")
+        await set_setting("promo_fast_applied", "1")
 
 
 async def init(path: str):

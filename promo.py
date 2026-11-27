@@ -20,30 +20,66 @@ log = logging.getLogger("tarakapedia.promo")
 
 # Materi menonjolkan merek & layanan, tetap profesional dan tanpa identitas pihak ketiga.
 _TEMPLATES = (
+    ("detail", "┌ 🏷 <b>TARAKAPEDIA SMM PANEL</b>\n"
+               "├ 📦 Layanan : ratusan pilihan sosmed\n"
+               "├ 🌐 Platform : IG, TikTok, YouTube, Facebook, Telegram, WhatsApp\n"
+               "├ 💰 Harga jual : mulai puluhan rupiah per 1K\n"
+               "├ ⚡ Proses : otomatis 24/7, status bisa dipantau\n"
+               "├ 🔁 Garansi : refill pada layanan bergaransi\n"
+               "├ 💳 Deposit : QRIS otomatis tanpa konfirmasi manual\n"
+               "├ 🎁 Referral : komisi saat order teman selesai\n"
+               "└ 📢 Info : channel utama &amp; log aktivitas\n\n"
+               "{prices}\n\nBuka katalog: {bot}"),
     ("harga", "🔥 <b>TARAKAPEDIA SMM PANEL</b> — suntik sosmed dengan harga bersahabat.\n\n"
               "Contoh harga mulai:\n{prices}\n\nOrder diproses otomatis 24/7. Cek katalog: {bot}"),
-    ("ig", "📸 <b>Tarakapedia SMM Panel</b> menyiapkan ratusan layanan Instagram: followers, "
-           "likes, story view, dan reels view. Pilih yang cocok, kirim link, sistem proses otomatis.\n\n{bot}"),
-    ("tiktok", "🎵 Suntik TikTok juga tersedia: followers, likes, view, dan save. "
-               "<b>Tarakapedia SMM Panel</b> menampilkan harga jelas di awal tanpa biaya tersembunyi.\n\n{bot}"),
-    ("wa_tg", "💬 WhatsApp channel member, Telegram post view, IG view, TikTok view — semuanya "
-              "ada di <b>Tarakapedia SMM Panel</b>. Contoh order yang paling sering masuk.\n\nCek harga: {bot}"),
+    ("cara", "🧾 <b>CARA ORDER DI TARAKAPEDIA</b>\n"
+              "┌ 1️⃣ Buka bot, pilih menu Layanan Termurah\n"
+              "├ 2️⃣ Pilih platform, kategori, lalu layanan\n"
+              "├ 3️⃣ Masukkan jumlah &amp; link sesuai instruksi\n"
+              "├ 4️⃣ Bayar dari saldo (QRIS otomatis bila perlu)\n"
+              "└ 5️⃣ Pantau status lewat menu Pesanan Saya\n\n"
+              "Semua berjalan otomatis. Mulai dari {bot}"),
+    ("ig", "📸 <b>Tarakapedia SMM Panel</b> menyediakan ratusan layanan Instagram: followers, likes, "
+           "story view, reels view, dan comment. Harga jual transparan di katalog, order diproses "
+           "otomatis 24/7, status bisa dipantau, dan layanan bergaransi bisa diajukan refill.\n\n"
+           "Cek pilihannya: {bot}"),
+    ("tiktok", "🎵 Suntik TikTok di <b>Tarakapedia SMM Panel</b>: followers, likes, view, dan save "
+               "dengan harga jelas di awal. Pilih layanan, kirim link, sistem memproses otomatis. "
+               "Saldo, riwayat, dan status order selalu bisa dicek langsung di bot.\n\n{bot}"),
+    ("wa_tg", "💬 WhatsApp channel member, Telegram member dan post view, IG view, TikTok view — "
+              "semuanya ada di <b>Tarakapedia SMM Panel</b>. Harga mulai puluhan rupiah per 1K, "
+              "deposit QRIS otomatis, order berjalan tanpa perlu menunggu manual.\n\nCek harga: {bot}"),
     ("murah", "⚡ Harga mulai puluhan rupiah per 1K untuk sejumlah layanan Instagram dan TikTok.\n\n"
-              "{prices}\n\nSemua tersedia di <b>Tarakapedia SMM Panel</b>: {bot}"),
-    ("deposit", "💳 <b>Tarakapedia SMM Panel</b> menyediakan deposit QRIS otomatis. Saldo masuk "
-                "begitu pembayaran terverifikasi, tanpa konfirmasi manual.\n\nMulai dari {bot}"),
-    ("proses", "🛒 Order di Tarakapedia diproses otomatis: pilih layanan, kirim link, lalu pantau "
-               "status lewat menu Pesanan Saya. Ratusan pilihan sosmed tersedia.\n\n{bot}"),
-    ("referral", "🎁 Ajak teman ke <b>Tarakapedia SMM Panel</b>, dapatkan komisi dari transaksi "
-                 "yang selesai. Kode referral tersedia di menu Referral.\n\n{bot}"),
-    ("order", "📦 Contoh order yang rutin masuk: Instagram view, TikTok view, Telegram post view, "
-              "dan WhatsApp channel member. Semua bisa dipesan langsung di bot.\n\n{bot}"),
-    ("mulai", "✨ Baru mencoba? Buka menu Layanan Termurah, pilih layanan, lalu kirim link sesuai "
-              "instruksi. <b>Tarakapedia SMM Panel</b> siap memproses otomatis.\n\n{bot}"),
-    ("channel", "📢 Info layanan dan pembaruan harga <b>Tarakapedia</b> diumumkan di channel utama. "
-                "Bergabung agar tidak ketinggalan pilihan terbaru.\n\n{bot}"),
+              "{prices}\n\nSemua tersedia di <b>Tarakapedia SMM Panel</b>, diproses otomatis, "
+              "dengan riwayat transaksi yang rapi: {bot}"),
+    ("deposit", "💳 <b>Tarakapedia SMM Panel</b> memakai deposit QRIS otomatis. Buat invoice, bayar, "
+                "saldo masuk setelah terverifikasi. Invoice bisa dilihat ulang kapan saja, saldo "
+                "langsung dipakai untuk order, dan tidak perlu konfirmasi manual.\n\nMulai dari {bot}"),
+    ("proses", "🛒 Order di Tarakapedia berjalan otomatis: pilih layanan, tentukan jumlah, kirim link, "
+               "lalu bayar dari saldo. Status berubah sendiri saat selesai, riwayat tersimpan rapi, "
+               "dan refill bisa diajukan untuk layanan bergaransi.\n\nBuka katalog: {bot}"),
+    ("referral", "🎁 Program referral <b>Tarakapedia SMM Panel</b>: ajak teman, dapatkan komisi dari "
+                 "margin order yang selesai. Komisi dibayar sekali, berlaku 7 hari sejak teman daftar, "
+                 "dan kode referral tersedia di menu Referral.\n\nCek sekarang: {bot}"),
+    ("order", "📦 Contoh order yang rutin masuk: Instagram view, TikTok view, Telegram post view, dan "
+              "WhatsApp channel member. Semua bisa dipesan langsung dengan harga jual tertera, "
+              "tanpa biaya tersembunyi.\n\nLihat daftar layanan: {bot}"),
+    ("garansi", "🔁 Setiap order di <b>Tarakapedia SMM Panel</b> tercatat rapi. Layanan bergaransi bisa "
+                "diajukan refill, statusnya diperbarui otomatis, dan riwayat transaksi tetap bisa "
+                "dicek kapan saja lewat menu Riwayat.\n\nLihat layanan: {bot}"),
+    ("mulai", "✨ Baru mencoba Tarakapedia? Buka menu Layanan Termurah, pilih platform dan layanan, "
+              "masukkan jumlah serta link, lalu bayar dari saldo. Deposit QRIS otomatis tersedia bila "
+              "saldo belum cukup.\n\nMulai sekarang: {bot}"),
+    ("channel", "📢 <b>Tarakapedia</b> mengumumkan layanan baru dan perubahan harga di channel utama. "
+                "Channel aktivitas menampilkan bukti transaksi otomatis tanpa mention, kontak, atau "
+                "ID user. Gabung agar tidak ketinggalan pembaruan.\n\nBuka bot: {bot}"),
     ("lengkap", "🌐 Instagram, TikTok, YouTube, Facebook, Telegram, WhatsApp, dan masih banyak lagi. "
-                "Satu bot untuk kebutuhan sosmed: <b>Tarakapedia SMM Panel</b>.\n\n{bot}"),
+                "Ratusan layanan dengan harga jual jelas, deposit QRIS otomatis, proses 24/7, "
+                "garansi refill, dan komisi referral. Satu bot untuk kebutuhan sosmed: "
+                "<b>Tarakapedia SMM Panel</b>.\n\n{bot}"),
+    ("top", "🏆 Papan top transaksi <b>Tarakapedia</b> diperbarui tiap minggu dan diurutkan dari total "
+            "rupiah yang dibelanjakan. Ikut serta lewat bot: deposit otomatis, order diproses 24/7, "
+            "saldo serta riwayat selalu transparan.\n\nCek papan: {bot}"),
 )
 
 _PRICE_CACHE_TTL = 1800
