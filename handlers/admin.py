@@ -9,7 +9,6 @@ from aiogram.types import CallbackQuery, FSInputFile, Message
 
 import db
 import limits
-import logcard
 import ui
 from config import ADMIN_IDS, CUSTOM_MENU_PHOTO, DB_PATH
 from providers import normalize_type, provider
@@ -826,20 +825,17 @@ async def set_edit_msg(m: Message, state: FSMContext):
 # ---------- TEMP: simulasi UI, hapus setelah pengetesan ----------
 @router.callback_query(F.data == "adm:testsim")
 async def testsim_cb(c: CallbackQuery):
-    """TEMP: pratinjau data contoh, tanpa kirim ke channel atau user lain."""
-    await c.answer("Menjalankan simulasi...")
+    """TEMP: kirim simulasi data contoh ke channel log, bukan ke user."""
+    await c.answer("Mengirim simulasi ke channel log...")
     stats = ("┌ 💰 Saldo  : <b>Rp 3.700</b>\n"
              "├ 📦 Order  : <b>0</b> kali\n"
              "└ 👥 Member : <b>1</b> orang")
     report = (f"🧪 <b>SIMULASI TAMPILAN</b>\n\n{stats}\n\n"
-              "Kartu log: siap\n"
-              "Poster welcome: siap\n"
-              "Pengiriman ke channel/user lain: tidak ada")
-    await c.message.answer_photo(photo=logcard.photo(report, "SIMULASI TAMPILAN"),
-                                 caption=report[:1000])
-    await c.message.answer_photo(photo=logcard.welcome_photo("@Naswa"),
-                                 caption="🧪 <b>SIMULASI POSTER WELCOME</b>\n@Naswa · tanpa kontak & tanpa ID")
-    await c.message.answer("✅ Simulasi selesai. Data contoh, tidak ada pesan yang dikirim ke channel atau user lain.",
+              "Data contoh · username @Naswa\n"
+              "Tanpa kontak atau ID user asli")
+    await ui.log_channel(c.bot, report, card_title="SIMULASI TAMPILAN")
+    await ui.log_new_member(c.bot, 0, "@Naswa", "Naswa")
+    await c.message.answer("✅ Simulasi terkirim ke channel log. Data contoh, tanpa kontak & ID user asli.",
                            reply_markup=panel_kb())
 
 

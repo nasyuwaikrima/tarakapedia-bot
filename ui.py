@@ -12,7 +12,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 import db
 import logcard
 from config import (ADMIN_CONTACT_URL, ADMIN_IDS, BOT_NAME, CHANNEL_LOG, CHANNEL_LOG_URL,
-                    CHANNEL_REGISTRY_URL, CUSTOM_MENU_PHOTO, MENU_PHOTO, WEBSITE_URL)
+                    CHANNEL_REGISTRY, CHANNEL_REGISTRY_URL, CUSTOM_MENU_PHOTO, MENU_PHOTO,
+                    WEBSITE_URL)
 
 log = logging.getLogger("tarakapedia.ui")
 BOT_URL = f"https://t.me/{os.getenv('BOT_USERNAME', 'tarakapedia_bot').strip().lstrip('@')}"
@@ -65,12 +66,14 @@ def public_user(uid: int, name: str | None = None, username: str | None = None) 
     return esc((name or "Pengguna").strip())[:50]
 
 
-def channel_markup():
-    """Tombol di setiap log channel: langsung membuka bot & channel register."""
+def channel_markup(include_main: bool = True, include_log: bool = False):
+    """Tombol aksi untuk pesan channel: bot, channel utama, dan log aktivitas."""
     rows = [[("🛒 Lihat Layanan", f"{BOT_URL}?start=layanan"),
              ("💰 Deposit", f"{BOT_URL}?start=deposit")]]
-    if CHANNEL_REGISTRY_URL:
+    if include_main and CHANNEL_REGISTRY_URL:
         rows.append([("📢 Channel Utama", CHANNEL_REGISTRY_URL)])
+    if include_log and CHANNEL_LOG_URL:
+        rows.append([("📜 Log Aktivitas", CHANNEL_LOG_URL)])
     return kb(*rows)
 
 
@@ -94,6 +97,26 @@ async def log_channel(bot, text: str, card_title: str | None = None):
                                disable_web_page_preview=True)
     except Exception as e:
         log.warning("Gagal kirim log teks ke channel: %s", e)
+
+
+async def info_channel(bot, text: str, card_title: str | None = None):
+    """Kirim info layanan/perubahan ke channel utama, bukan channel log."""
+    if not CHANNEL_REGISTRY:
+        return
+    caption = text + (f"\n\n📜 Log Aktivitas: {CHANNEL_LOG_URL}" if CHANNEL_LOG_URL else "")
+    try:
+        await bot.send_photo(CHANNEL_REGISTRY, photo=logcard.photo(text, card_title),
+                             caption=caption[:1000],
+                             reply_markup=channel_markup(include_main=False, include_log=True))
+        return
+    except Exception as e:
+        log.warning("Gagal kirim kartu info ke channel utama: %s", e)
+    try:
+        await bot.send_message(CHANNEL_REGISTRY, caption,
+                               reply_markup=channel_markup(include_main=False, include_log=True),
+                               disable_web_page_preview=True)
+    except Exception as e:
+        log.warning("Gagal kirim info teks ke channel utama: %s", e)
 
 
 async def log_new_member(bot, uid: int, name: str | None, username: str | None,
@@ -332,7 +355,7 @@ async def notify_admins(bot, text: str):
 
 
 async def catalog_update_notice(bot, info: dict, broadcast: bool = True) -> tuple[int, int]:
-    """Umumkan layanan baru / perubahan harga ke channel log dan semua user.
+    """Umumkan layanan baru / perubahan harga ke channel utama dan semua user.
 
     `info` berasal dari db.sync_services() atau aksi admin. Hanya harga jual
     yang ditampilkan — modal dan ID provider tidak pernah ikut terkirim.
@@ -354,7 +377,7 @@ async def catalog_update_notice(bot, info: dict, broadcast: bool = True) -> tupl
         lines.append(f"• {esc(str(x['name'])[:28])} : {rp(x['old'])} menjadi {rp(x['new'])}")
     caption = "\n".join(lines) + "\n\n🛒 Cek layanan terbaru lewat tombol di bawah."
 
-    await log_channel(bot, caption, card_title=title)
+    await info_channel(bot, caption, card_title=title)
     if not broadcast:
         return 0, 0
 
