@@ -13,7 +13,7 @@ import logcard
 import ui
 from config import ADMIN_IDS, CUSTOM_MENU_PHOTO, DB_PATH
 from providers import normalize_type, provider
-from ui import LINE, answer_cb, esc, kb, num, rp, show
+from ui import LINE, answer_cb, esc, kb, rp, show
 
 router = Router()
 
@@ -826,23 +826,20 @@ async def set_edit_msg(m: Message, state: FSMContext):
 # ---------- TEMP: simulasi UI, hapus setelah pengetesan ----------
 @router.callback_query(F.data == "adm:testsim")
 async def testsim_cb(c: CallbackQuery):
-    """TEMP: pratinjau kartu & poster tanpa kirim ke channel atau user lain."""
-    await c.answer("Menjalankan simulasi data aktual...")
-    u = await db.get_user(c.from_user.id) or {}
-    s = await db.global_stats()
-    stats = (f"┌ 💰 Saldo  : <b>{rp(u.get('balance', 0))}</b>\n"
-             f"├ 📦 Order  : <b>{num(u.get('total_order', 0))}</b> kali\n"
-             f"└ 👥 Member : <b>{num(s['users'])}</b> orang")
-    report = (f"🧪 <b>SIMULASI DATA AKTUAL</b>\n\n{stats}\n\n"
+    """TEMP: pratinjau data contoh, tanpa kirim ke channel atau user lain."""
+    await c.answer("Menjalankan simulasi...")
+    stats = ("┌ 💰 Saldo  : <b>Rp 3.700</b>\n"
+             "├ 📦 Order  : <b>0</b> kali\n"
+             "└ 👥 Member : <b>1</b> orang")
+    report = (f"🧪 <b>SIMULASI TAMPILAN</b>\n\n{stats}\n\n"
               "Kartu log: siap\n"
               "Poster welcome: siap\n"
               "Pengiriman ke channel/user lain: tidak ada")
-    await c.message.answer_photo(photo=logcard.photo(report, "SIMULASI AKTUAL"),
+    await c.message.answer_photo(photo=logcard.photo(report, "SIMULASI TAMPILAN"),
                                  caption=report[:1000])
-    who = ui.public_user(c.from_user.id, c.from_user.full_name, c.from_user.username)
-    await c.message.answer_photo(photo=logcard.welcome_photo(who),
-                                 caption=f"🧪 <b>SIMULASI POSTER WELCOME</b>\n{who} · tanpa mention")
-    await c.message.answer("✅ Simulasi data aktual selesai. Tidak ada pesan yang dikirim ke channel atau user lain.",
+    await c.message.answer_photo(photo=logcard.welcome_photo("@Naswa"),
+                                 caption="🧪 <b>SIMULASI POSTER WELCOME</b>\n@Naswa · tanpa kontak & tanpa ID")
+    await c.message.answer("✅ Simulasi selesai. Data contoh, tidak ada pesan yang dikirim ke channel atau user lain.",
                            reply_markup=panel_kb())
 
 
