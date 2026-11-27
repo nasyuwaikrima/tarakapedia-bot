@@ -25,10 +25,13 @@ PUBLIC_COMMANDS = [
     BotCommand(command="top", description="Papan top transaksi"),
 ]
 
-ADMIN_COMMANDS = PUBLIC_COMMANDS + [
+# Sengaja dipisah: scope publik tidak pernah memuat daftar ini.
+ADMIN_ONLY_COMMANDS = [
     BotCommand(command="admin", description="Buka panel admin"),
     BotCommand(command="users", description="Daftar semua user"),
 ]
+
+ADMIN_COMMANDS = PUBLIC_COMMANDS + ADMIN_ONLY_COMMANDS
 
 
 async def setup(bot: Bot):
