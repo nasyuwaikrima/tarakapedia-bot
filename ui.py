@@ -35,6 +35,24 @@ def num(n) -> str:
     return f"{int(n):,}".replace(",", ".")
 
 
+_INTERNAL_CODE = re.compile(r"\b(?:TP|MP|S)\s*\d+\b", re.IGNORECASE)
+_EMPTY_BRACKET = re.compile(r"\[\s*\]")
+
+
+def clean_service_name(name, limit: int = 26) -> str:
+    """Nama layanan rapi untuk user: tanpa kode server internal & sisa tanda."""
+    text = str(name or "")
+    text = _INTERNAL_CODE.sub(" ", text)
+    text = _EMPTY_BRACKET.sub(" ", text)
+    if text.count("[") > text.count("]"):
+        text = re.sub(r"\[[^]]*$", "", text)  # sisa tanda dari nama terpotong
+    text = re.sub(r"\s+", " ", text).strip(" -")
+    if len(text) > limit:
+        cut = text[:limit].rsplit(" ", 1)[0] or text[:limit]
+        return cut.rstrip(" -[") + "…"
+    return text
+
+
 _BRAND = re.compile(r"pixpayz|medanpedia|api\.medanpedia\.co\.id", re.IGNORECASE)
 
 
@@ -212,7 +230,7 @@ def kb(*rows):
 def main_kb(uid: int | None = None):
     """Menu utama: baris 2 tombol & 1 tombol dirapatkan agar rapi di layar."""
     rows = [
-        [("💰 Deposit QRIS", "dep"), ("🛒 Order Termurah", "ord")],
+        [("💰 Deposit QRIS", "dep"), ("🛒 Lihat Layanan", "ord")],
         [("📦 Pesanan Saya", "myord"), ("🧾 Riwayat", "hist")],
         [("🏆 Top Transaksi", "top:all")],
         [("🧩 Lainnya", "misc")],

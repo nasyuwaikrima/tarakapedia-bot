@@ -6,6 +6,7 @@ ditolak, lalu nilai harga asli disuntikkan kembali dari database oleh promo.py.
 """
 
 import asyncio
+import html
 import logging
 import os
 import re
@@ -46,7 +47,8 @@ def _clean(raw: str) -> str | None:
     text = " ".join(text.split())
     if not (140 <= len(text) <= 700):
         return None
-    return text
+    # Hasil AI disisipkan ke caption HTML: amankan karakter khusus.
+    return html.escape(text, quote=False)
 
 
 async def _fetch(base: str) -> str | None:

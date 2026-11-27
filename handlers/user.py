@@ -397,7 +397,7 @@ async def _konfirmasi(ev, state: FSMContext, s, d: dict):
     u = await db.get_user(ev.from_user.id)
     cukup = "✅ cukup" if u["balance"] >= price else "⚠️ belum cukup, silakan deposit"
     rows = [
-        ("🏷 Layanan", f"<b>{esc(s['name'])}</b>"),
+        ("🏷 Layanan", f"<b>{esc(ui.clean_service_name(s['name'], 48))}</b>"),
         ("📋 Format", TYPE_LABELS.get(s['provider_type'], s['provider_type'])),
         ("🔗 Target", f"<code>{esc(d['link'])}</code>"),
     ]
@@ -433,6 +433,34 @@ GROUP_PER = 8   # 4 baris x 2 platform per halaman
 CAT_PER = 6     # 3 baris x 2 sub-kategori per halaman
 SVC_PER = 6
 
+_FILTERS = ("", "mur", "cep", "ref")
+_FILTER_NOTE = {
+    "": "💸 Termurah dulu",
+    "mur": "💸 Termurah dulu",
+    "cep": "⚡ Tercepat dulu",
+    "ref": "🛡 Hanya yang ada refill",
+}
+
+
+def _filter_row(ftype: str, make_cb) -> list:
+    """Baris filter yang sama di semua daftar layanan."""
+    return [(("↩️ Semua" if f == "" else db.FILTER_LABELS[f]), make_cb(f))
+            for f in _FILTERS]
+
+
+def _cat_cb(ftype: str, cid: int, page: int) -> str:
+    return f"ord:f:{ftype}:{cid}:{page}" if ftype else f"ord:c:{cid}:{page}"
+
+
+def _est_badge(s) -> str:
+    badge = "🛡" if s["provider_refill"] else "⚡"
+    minutes = db.avg_minutes(s["provider_avg"])
+    if minutes >= 99999:
+        return badge
+    if minutes < 1:
+        return f"{badge} ⏱<1m"
+    return f"{badge} ⏱{int(minutes)}m" if minutes < 60 else f"{badge} ⏱{int(minutes // 60)}j"
+
 
 async def _ord_groups(ev, page: int):
     """Halaman platform: Instagram, TikTok, YouTube, dll."""
@@ -445,6 +473,7 @@ async def _ord_groups(ev, page: int):
     # Satu platform per baris: teks pendek tapi harga & jumlah tetap terbaca di HP.
     rows = [[(f"{g['emoji']} {g['label'][:18]} • {rp(g['min_price'])} • {ui.num(g['count'])} layanan",
               f"ord:p:{g['key']}:0")] for g in chunk]
+    rows.append([("📋 Semua Layanan", "ord:all::0")])
     nav = []
     if page > 0:
         nav.append(("◀️", f"ord:g:{page - 1}"))
@@ -455,7 +484,7 @@ async def _ord_groups(ev, page: int):
     rows.append([("⬅️ Menu", "menu")])
     t = tree([
         "📂 Dikelompokkan per platform",
-        "💸 Termurah → termahal",
+        "🔎 Filter murah / cepat / refill tersedia di daftar layanan",
         f"📊 {len(groups)} platform • halaman {page + 1}/{pages}",
     ], head="🛒 <b>ORDER LAYANAN</b>")
     t += "\n\nSilakan pilih platform:"
@@ -471,6 +500,44 @@ async def ord_cats(c: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("ord:g:"))
 async def ord_groups_cb(c: CallbackQuery):
     await _ord_groups(c, int(c.data.split(":")[2]))
+
+
+async def _ord_all(ev, ftype: str, page: int):
+    """Semua layanan aktif dalam satu daftar, dengan filter yang sama."""
+    ftype = ftype if ftype in db.FILTER_LABELS else ""
+    svcs = await db.filter_services(await db.q("SELECT * FROM services WHERE active=1"), ftype)
+    pages = max(1, math.ceil(len(svcs) / SVC_PER))
+    page = max(0, min(page, pages - 1))
+    chunk = svcs[page * SVC_PER:(page + 1) * SVC_PER]
+    rows = []
+    for n, s in enumerate(chunk, page * SVC_PER + 1):
+        rows.append([(f"{n:02d}. {ui.clean_service_name(s['name'], 22)} • {rp(s['_price'])} {_est_badge(s)}",
+                      f"ord:s:{s['id']}:all:{ftype}")])
+    rows.append(_filter_row(ftype, lambda f: f"ord:all:{f}:0"))
+    nav = []
+    if page > 0:
+        nav.append(("◀️", f"ord:all:{ftype}:{page - 1}"))
+    if page + 1 < pages:
+        nav.append(("▶️", f"ord:all:{ftype}:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([("⬅️ Platform", "ord:g:0")])
+    t = tree([
+        f"🔎 Filter: <b>{db.FILTER_LABELS[ftype] if ftype else 'Semua'}</b>",
+        _FILTER_NOTE[ftype],
+        f"📊 {ui.num(len(svcs))} layanan • halaman {page + 1}/{pages}",
+    ], head="📋 <b>SEMUA LAYANAN</b>")
+    if not svcs:
+        t += "\n\nTidak ada layanan untuk filter ini. Pilih filter lain."
+    else:
+        t += "\n\nSilakan pilih layanan:"
+    await show(ev, t, kb(*rows))
+
+
+@router.callback_query(F.data.startswith("ord:all:"))
+async def ord_all_cb(c: CallbackQuery):
+    _, _, ftype, page = c.data.split(":")
+    await _ord_all(c, ftype, int(page or 0))
 
 
 @router.callback_query(F.data.startswith("ord:p:"))
@@ -502,45 +569,67 @@ async def ord_group_cb(c: CallbackQuery):
     await show(c, t, kb(*rows))
 
 
-@router.callback_query(F.data.startswith("ord:c:"))
-async def ord_cat(c: CallbackQuery):
-    _, _, cid, page = c.data.split(":")
-    cid, page, per = int(cid), int(page), SVC_PER
+async def _ord_cat(ev, cid: int, page: int, ftype: str = ""):
+    ftype = ftype if ftype in db.FILTER_LABELS else ""
     cat = await db.q1("SELECT * FROM categories WHERE id=?", (cid,))
     if not cat:
-        return await answer_cb(c, "Kategori tidak tersedia.", True)
+        return await answer_cb(ev, "Kategori tidak tersedia.", True)
     key, emoji, label = db.platform_of(cat["name"])
-    svcs = await db.sorted_services(
-        await db.q("SELECT * FROM services WHERE category_id=? AND active=1", (cid,)))
-    pages = max(1, math.ceil(len(svcs) / per))
+    svcs = await db.filter_services(
+        await db.q("SELECT * FROM services WHERE category_id=? AND active=1", (cid,)), ftype)
+    pages = max(1, math.ceil(len(svcs) / SVC_PER))
     page = max(0, min(page, pages - 1))
-    chunk = svcs[page * per:(page + 1) * per]
+    chunk = svcs[page * SVC_PER:(page + 1) * SVC_PER]
     rows = []
-    for n, s in enumerate(chunk, page * per + 1):
-        badge = "🛡" if s["provider_refill"] else "⚡"
-        rows.append([(f"{n:02d}. {s['name'][:24]} • {rp(s['_price'])} {badge}", f"ord:s:{s['id']}")])
+    for n, s in enumerate(chunk, page * SVC_PER + 1):
+        rows.append([(f"{n:02d}. {ui.clean_service_name(s['name'], 22)} • {rp(s['_price'])} {_est_badge(s)}",
+                      f"ord:s:{s['id']}:cat:{ftype}:{cid}")])
+    rows.append(_filter_row(ftype, lambda f: f"ord:f:{f}:{cid}:0"))
     nav = []
     if page > 0:
-        nav.append(("◀️", f"ord:c:{cid}:{page - 1}"))
+        nav.append(("◀️", _cat_cb(ftype, cid, page - 1)))
     if page + 1 < pages:
-        nav.append(("▶️", f"ord:c:{cid}:{page + 1}"))
+        nav.append(("▶️", _cat_cb(ftype, cid, page + 1)))
     if nav:
         rows.append(nav)
+    rows.append([("📋 Semua", f"ord:all:{ftype}:0")])
     rows.append([("⬅️ Platform", f"ord:p:{key}:0")])
     t = tree([
         f"🏷 {emoji} {esc(label)}",
-        f"💸 Termurah dulu • {len(svcs)} layanan • halaman {page + 1}/{pages}",
-        "🛡 Garansi refill • ⚡ Proses cepat",
+        f"🔎 Filter: <b>{db.FILTER_LABELS[ftype] if ftype else 'Semua'}</b>",
+        _FILTER_NOTE[ftype],
+        f"📊 {ui.num(len(svcs))} layanan • halaman {page + 1}/{pages}",
     ], head=f"{cat['emoji']} <b>{esc(cat['name'].upper())}</b>")
-    t += "\n\nSilakan pilih layanan:"
-    await show(c, t, kb(*rows))
+    if not svcs:
+        t += "\n\nTidak ada layanan untuk filter ini. Pilih filter lain."
+    else:
+        t += "\n\nSilakan pilih layanan:"
+    await show(ev, t, kb(*rows))
+
+
+@router.callback_query(F.data.startswith("ord:c:"))
+async def ord_cat(c: CallbackQuery):
+    _, _, cid, page = c.data.split(":")
+    await _ord_cat(c, int(cid), int(page))
+
+
+@router.callback_query(F.data.startswith("ord:f:"))
+async def ord_filter(c: CallbackQuery):
+    _, _, ftype, cid, page = c.data.split(":")
+    await _ord_cat(c, int(cid), int(page), ftype)
 
 
 @router.callback_query(F.data.startswith("ord:s:"))
 async def ord_service(c: CallbackQuery):
-    s = await db.q1("SELECT * FROM services WHERE id=? AND active=1", (int(c.data.split(":")[2]),))
+    parts = c.data.split(":")
+    s = await db.q1("SELECT * FROM services WHERE id=? AND active=1", (int(parts[2]),))
     if not s:
         return await answer_cb(c, "Layanan tidak tersedia.", True)
+    ftype = parts[4] if len(parts) > 4 and parts[4] in db.FILTER_LABELS else ""
+    if len(parts) > 3 and parts[3] == "all":
+        back = f"ord:all:{ftype}:0"
+    else:
+        back = _cat_cb(ftype, s["category_id"], 0)
     estimasi = str(s["provider_avg"] or "").strip()[:90] or "Proses cepat, otomatis"
     desc = ui.clean_desc(s["description"])
     if desc and desc.lower() != str(s["name"]).strip().lower():
@@ -553,11 +642,11 @@ async def ord_service(c: CallbackQuery):
         ("🔢 Min/Max", f"{ui.num(s['min_qty'])} / {ui.num(s['max_qty'])}"),
         ("🛡 Garansi", "✅ Ada refill" if s['provider_refill'] else "❌ Tanpa refill"),
         ("⏱ Estimasi", f"<i>{esc(estimasi)}</i>"),
-    ], head=f"📌 <b>{esc(s['name'])}</b>")
+    ], head=f"📌 <b>{esc(ui.clean_service_name(s['name'], 48))}</b>")
     t += (f"\n\n📝 <b>Spesifikasi layanan:</b>\n{spesifikasi}\n\n"
           f"💡 Tagihan menyesuaikan jumlah/baris yang Anda kirim.")
     await show(c, t,
-               kb([("🛒 Pesan Sekarang", f"ord:go:{s['id']}")], [("⬅️ Kembali", f"ord:c:{s['category_id']}:0")]))
+               kb([("🛒 Pesan Sekarang", f"ord:go:{s['id']}")], [("⬅️ Kembali", back)]))
 
 
 @router.callback_query(F.data.startswith("ord:go:"))
@@ -651,7 +740,7 @@ async def ord_ok(c: CallbackQuery, state: FSMContext):
     u = await db.get_user(c.from_user.id)
     await show(c, tree([
         ("🆔 Order ID", f"<code>#{oid}</code>"),
-        ("🏷 Layanan", esc(s['name'])),
+        ("🏷 Layanan", esc(ui.clean_service_name(s['name'], 48))),
         ("💸 Harga", rp(price)),
         ("💰 Sisa Saldo", f"<b>{rp(u['balance'])}</b>"),
     ], head="✅ <b>Pesanan Berhasil Dibuat!</b>"), kb([("📦 Pesanan Saya", "myord")], BACK))
@@ -659,7 +748,7 @@ async def ord_ok(c: CallbackQuery, state: FSMContext):
                                   f"{esc(s['name'])} • {rp(price)} • provider <code>{esc(pid)}</code>")
     await ui.log_channel(c.bot, tree([
         ("👤 User", ui.public_user(c.from_user.id, u['name'] if u else None, u['username'] if u else None)),
-        ("📦 Layanan", esc(s['name'])),
+        ("📦 Layanan", esc(ui.clean_service_name(s['name'], 48))),
         ("💸 Harga", rp(price)),
     ], head=f"🛒 <b>ORDER BARU</b> #{oid}"))
 

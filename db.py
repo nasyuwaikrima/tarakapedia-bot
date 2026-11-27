@@ -361,6 +361,56 @@ async def sorted_services(rows) -> list[dict]:
     return sorted(out, key=lambda d: (d["_price"], str(d.get("name") or "").lower()))
 
 
+def avg_minutes(avg_text) -> float:
+    """Ubah estimasi waktu provider (teks) jadi menit untuk pengurutan cepat.
+
+    Format umum: "5 menit", "1 jam", "30 detik", "2-5 menit", "1 hari".
+    Tanpa estimasi diurutkan terakhir.
+    """
+    text = str(avg_text or "").strip().lower()
+    if not text:
+        return 99999.0
+    m = re.search(r"\d+(?:[.,]\d+)?", text)
+    if not m:
+        return 99999.0
+    val = float(m.group(0).replace(",", "."))
+    if any(k in text for k in ("hari", "day", "bulan", "month")):
+        return val * 1440
+    if any(k in text for k in ("jam", "hour")) or re.search(r"\bh\b", text):
+        return val * 60
+    if any(k in text for k in ("detik", "second", "sec")) or re.search(r"\bs\b", text):
+        return max(val / 60, 0.01)
+    return val  # menit (default provider)
+
+
+async def filter_services(rows, ftype: str = "") -> list[dict]:
+    """Filter & urutkan layanan menurut pilihan user.
+
+    ftype:
+      ""    -> default (termurah dulu)
+      "mur" -> termurah (harga ascending)
+      "cep" -> cepat (estimasi waktu terpendek dulu)
+      "ref" -> hanya yang punya garansi refill, lalu termurah
+    """
+    svcs = await sorted_services(rows)
+    if ftype == "mur":
+        return svcs  # sudah termurah dulu
+    if ftype == "cep":
+        return sorted(svcs, key=lambda d: (avg_minutes(d.get("provider_avg") or ""),
+                                           d["_price"]))
+    if ftype == "ref":
+        return [d for d in svcs if int(d.get("provider_refill") or 0) > 0]
+    return svcs
+
+
+FILTER_LABELS = {
+    "": "Semua",
+    "mur": "💸 Murah",
+    "cep": "⚡ Cepat",
+    "ref": "🛡 Refill",
+}
+
+
 # Katalog provider punya ratusan sub-kategori. Menu user dikelompokkan dulu
 # per platform supaya tidak menumpuk; kunci ASCII dipakai di callback Telegram.
 PLATFORM_MAP = [
