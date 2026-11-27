@@ -46,7 +46,8 @@ def clean(text) -> str:
             .strip())
 
 
-def parse(text, title: str | None = None) -> dict:
+def parse(text, title: str | None = None, badge: str | None = None,
+          footer: str | None = None) -> dict:
     lines = [x.strip() for x in clean(text).splitlines() if x.strip()]
     headline = clean(title) if title else (lines.pop(0) if lines else "AKTIVITAS")
     rows = [x for x in lines if not x.startswith("🔗")]
@@ -55,7 +56,8 @@ def parse(text, title: str | None = None) -> dict:
     return {
         "title": (EMOJI.sub("", headline).strip() or "AKTIVITAS"),
         "rows": [EMOJI.sub("", x).strip() for x in rows[:5]],
-        "amount": money.group(0).strip() if money else "",
+        "badge": clean(badge) if badge else (money.group(0).strip() if money else "LIVE UPDATE"),
+        "footer": clean(footer) or "Diproses otomatis 24/7  ·  Tarakapedia SMM Panel",
     }
 
 
@@ -77,11 +79,12 @@ def _fit(draw, text: str, font, width: int) -> str:
     return (text + "…").strip()
 
 
-def render(text, title: str | None = None) -> io.BytesIO:
+def render(text, title: str | None = None, badge: str | None = None,
+           footer: str | None = None) -> io.BytesIO:
     """Kembalikan PNG kartu aktivitas dalam memory buffer."""
     if Image is None:
         raise RuntimeError("Pillow tidak tersedia")
-    data = parse(text, title)
+    data = parse(text, title, badge, footer)
     rows = data["rows"]
     height = 306 + len(rows) * 78 + 74
     img = Image.new("RGB", (W, height), BG_TOP)
@@ -117,14 +120,13 @@ def render(text, title: str | None = None) -> io.BytesIO:
     d.rounded_rectangle((PAD, 142, W - PAD, 268), radius=22, fill=CARD_ALT)
     d.rounded_rectangle((PAD + 26, 172, PAD + 34, 238), radius=4, fill=ACCENT)
     d.text((PAD + 54, 168), _fit(d, data["title"], f_title, 560), font=f_title, fill=TEXT)
-    if data["amount"]:
-        aw = int(d.textlength(data["amount"], font=_font(26, True))) + 44
-        x0 = W - PAD - 26 - aw
-        d.rounded_rectangle((x0, 182, W - PAD - 26, 230), radius=14, fill=(20, 58, 55))
-        d.text((x0 + 22, 191), data["amount"], font=_font(26, True), fill=GOLD)
-    else:
-        d.rounded_rectangle((W - PAD - 190, 182, W - PAD - 26, 230), radius=14, fill=(20, 44, 77))
-        d.text((W - PAD - 170, 192), "LIVE UPDATE", font=_font(22, True), fill=BLUE)
+    badge_font = _font(26, True) if MONEY.fullmatch(data["badge"]) else _font(22, True)
+    aw = int(d.textlength(data["badge"], font=badge_font)) + 48
+    x0 = max(PAD + 600, W - PAD - 26 - aw)
+    d.rounded_rectangle((x0, 182, W - PAD - 26, 230), radius=14,
+                        fill=(20, 58, 55) if MONEY.fullmatch(data["badge"]) else (20, 44, 77))
+    d.text((x0 + 24, 191), data["badge"], font=badge_font,
+           fill=GOLD if MONEY.fullmatch(data["badge"]) else BLUE)
 
     # Detail transaksi, satu baris per informasi.
     y = 292
@@ -135,7 +137,7 @@ def render(text, title: str | None = None) -> io.BytesIO:
         d.text((PAD + 52, y + 18), _fit(d, row, f_row, W - 2 * PAD - 96), font=f_row, fill=TEXT)
         y += 78
 
-    d.text((PAD, height - 54), "Diproses otomatis 24/7  ·  Tarakapedia SMM Panel",
+    d.text((PAD, height - 54), _fit(d, data["footer"], f_footer, W - 2 * PAD - 180),
            font=f_footer, fill=MUTED)
     d.ellipse((W - PAD - 132, height - 47, W - PAD - 120, height - 35), fill=ACCENT)
     d.text((W - PAD - 110, height - 54), "VERIFIED LIVE", font=f_footer, fill=MUTED)
@@ -146,9 +148,24 @@ def render(text, title: str | None = None) -> io.BytesIO:
     return buf
 
 
-def photo(text, title: str | None = None):
+def photo(text, title: str | None = None, badge: str | None = None,
+          footer: str | None = None):
     """BufferedInputFile siap dikirim lewat Bot API."""
     from aiogram.types import BufferedInputFile
 
-    raw = render(text, title)
+    raw = render(text, title, badge, footer)
     return BufferedInputFile(raw.getvalue(), filename="activity.png")
+
+
+def welcome_photo(name: str):
+    """Kartu sambutan untuk user baru dengan gaya dashboard yang sama."""
+    clean_name = (clean(name) or "Pengguna")[:40]
+    return photo(
+        f"👤 {clean_name}\n"
+        "⚡ Order otomatis 24/7\n"
+        "💸 Deposit QRIS dengan konfirmasi otomatis\n"
+        "🎁 Komisi referral hingga 7 hari",
+        title="SELAMAT DATANG DI TARAKAPEDIA",
+        badge="MEMBER BARU",
+        footer="Gabung 2 channel untuk mulai bertransaksi  ·  Tarakapedia",
+    )

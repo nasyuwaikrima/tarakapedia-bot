@@ -113,7 +113,7 @@ def join_caption(missing) -> str:
               "Channel dipakai sebagai registrasi &amp; log transaksi supaya tidak ketinggalan info.")
 
 
-async def gate(ev, bot: Bot | None = None, state=None) -> bool:
+async def gate(ev, bot: Bot | None = None, state=None, welcome: bool = False) -> bool:
     """True kalau user digate (pesan join sudah dikirim)."""
     uid = getattr(getattr(ev, "from_user", None), "id", None)
     if uid is None or uid in ADMIN_IDS:
@@ -132,7 +132,14 @@ async def gate(ev, bot: Bot | None = None, state=None) -> bool:
                                       f"Sudah gabung di 2 channel")
     if not missing:
         return False
-    await ui.show(ev, join_caption(missing), join_markup(missing))
+    if welcome:
+        name = getattr(getattr(ev, "from_user", None), "full_name", None)
+        caption = (f"🎉 <b>Selamat datang, {ui.esc(name or 'Pengguna')}!</b>\n\n"
+                   "Akun Tarakapedia Anda sudah dibuat. Selesaikan langkah berikut sebelum memesan.\n\n"
+                   + join_caption(missing))
+        await ui.welcome_card(ev, name or "Pengguna", caption, join_markup(missing))
+    else:
+        await ui.show(ev, join_caption(missing), join_markup(missing))
     return True
 
 

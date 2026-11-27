@@ -75,6 +75,20 @@ async def log_channel(bot, text: str, card_title: str | None = None):
         pass
 
 
+async def welcome_card(ev, name: str, caption: str, markup=None):
+    """Kirim kartu sambutan bergambar untuk user baru."""
+    try:
+        await ev.answer_photo(photo=logcard.welcome_photo(name), caption=caption[:1000],
+                              reply_markup=markup)
+        return
+    except Exception:
+        pass
+    try:
+        await ev.answer(caption, reply_markup=markup, disable_web_page_preview=True)
+    except Exception:
+        pass
+
+
 def bar(v, t, w=10) -> str:
     f = w if not t else max(0, min(w, int(w * v / t)))
     return "▰" * f + "▱" * (w - f)

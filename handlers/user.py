@@ -49,7 +49,7 @@ async def start(m: Message, command: CommandObject, state: FSMContext, is_new: b
                          f"💰 Bonus: <b>{rp(bonus)}</b>")
             except Exception:
                 pass
-    if await channels.gate(m, m.bot):
+    if await channels.gate(m, m.bot, welcome=is_new):
         return
     if is_new:
         await ui.log_channel(m.bot, f"🆕 <b>MEMBER BARU</b>\n👤 {ui.user_link(m.from_user.id, m.from_user.full_name, m.from_user.username)}"
