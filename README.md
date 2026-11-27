@@ -44,7 +44,8 @@ Bot SMM panel berbasis Telegram dengan **order real ke API MedanPedia**, katalog
 - ✅ Batas **3 invoice aktif per user** (bisa diatur admin) — antrean deposit tetap terkendali.
 - ✅ **Wajib gabung 2 channel**: `@tarakapedia` (register) & `@tarakapedia_log` (log). Berlaku juga untuk user lama; kalau keluar, bot menyuruh gabung lagi.
 - ✅ **Status register tersimpan** di database & tampil di profil/panel admin; perubahan status ikut dilog ke channel.
-- ✅ **Semua transaksi tampil di `@tarakapedia_log`**: deposit, order, refund, pembelian, misi, komisi referral, dan order selesai — biar calon user ikut tertarik.
+- ✅ **Semua transaksi tampil di `@tarakapedia_log`**: deposit, order, refund, pembelian, misi, komisi referral, dan order selesai — biar calon user ikut tertarik. Setiap log dikirim sebagai **kartu dashboard bergaya modern yang digenerate otomatis** (judul, nominal, detail transaksi, timestamp WIB) plus caption; bila generate/kirim foto gagal, log tetap terkirim sebagai teks.
+- ✅ **Pembaruan katalog langsung diumumkan**: setiap ada layanan baru atau perubahan harga (sinkron otomatis 30 menit, sinkron manual admin, margin global, harga manual, tambah layanan) bot mengirim notifikasi ke `@tarakapedia_log` **dan semua user aktif** dengan tombol `🛒 Lihat Layanan`. Hanya harga jual yang ditampilkan; modal dan ID provider tidak bocor. Sinkron saat startup tidak mengirim notifikasi agar tidak mengganggu.
 - ✅ Toko produk + stok, referral, misi, broadcast, backup DB, statistik.
 - ✅ **Referral aman**: komisi dibayar sekali saat order **selesai**, dihitung dari margin order (default 20%, dipatok maks 50%), bukan dari deposit, dan hanya berlaku **7 hari sejak teman daftar** — bot tetap untung, user tetap dapat hadiah.
 - ✅ Migrasi database otomatis: database lama tetap aman saat di-upgrade.

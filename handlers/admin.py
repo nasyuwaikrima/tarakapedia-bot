@@ -144,8 +144,12 @@ async def api_sync(c: CallbackQuery):
         fav = await db.setting("service_fav") == "1"
         items = await provider.services(service_fav=fav)
         res = await db.sync_services(items)
+        notice = ""
+        if res["new_count"] or res["changed_count"]:
+            ok, fail = await ui.catalog_update_notice(c.bot, res)
+            notice = f"\n\n📢 Info terkirim: <b>{ok}</b> user • gagal: <b>{fail}</b>"
         await show(c, f"✅ <b>Sinkron selesai</b>\n\n├ Layanan diterima : <b>{res['total']}</b>\n"
-                      f"├ Baru : <b>{res['added']}</b>\n└ Diperbarui : <b>{res['updated']}</b>\n\n"
+                      f"├ Baru : <b>{res['added']}</b>\n└ Diperbarui : <b>{res['updated']}</b>{notice}\n\n"
                       f"Harga jual otomatis menyesuaikan margin. Modal tetap tersembunyi.", api_kb())
     except Exception as e:
         await show(c, f"⚠️ Gagal sinkron: {esc(str(e)[:200])}", api_kb())
@@ -196,11 +200,18 @@ async def markup_msg(m: Message, state: FSMContext):
     await db.set_setting("markup_percent", str(pct))
     await db.set_setting("markup_flat", str(flat))
     n = 0
+    changes = []
     for s in await db.q("SELECT * FROM services WHERE auto_price=1 AND provider_price>0"):
         new = max(s["price_per_1k"], await db.suggested_price(s["provider_price"]))
         if new != s["price_per_1k"]:
             await db.x("UPDATE services SET price_per_1k=? WHERE id=?", (new, s["id"]))
             n += 1
+            if len(changes) < 8:
+                changes.append({"name": s["name"], "old": s["price_per_1k"], "new": new})
+    if changes:
+        await ui.catalog_update_notice(m.bot, {"title": "PEMBARUAN HARGA LAYANAN",
+                                               "price_changes": changes,
+                                               "changed_count": n})
     await state.clear()
     await m.answer(f"✅ Margin jadi <b>{pct}%</b> + {rp(flat)}/1K.\n{n} harga layanan disesuaikan.",
                    reply_markup=kb([("🌐 Provider API", "adm:api")], PANEL))
@@ -498,6 +509,11 @@ async def svc_price_msg(m: Message, state: FSMContext):
     lantai = await db.suggested_price(s["provider_price"]) if s["provider_price"] else 0
     final = max(p, lantai)
     await db.x("UPDATE services SET price_per_1k=?, auto_price=0 WHERE id=?", (final, sid))
+    if final != s["price_per_1k"]:
+        await ui.catalog_update_notice(m.bot, {"title": "PEMBARUAN HARGA LAYANAN",
+                                               "price_changes": [{"name": s["name"],
+                                                                  "old": s["price_per_1k"],
+                                                                  "new": final}]})
     await state.clear()
     msg = f"✅ Harga layanan #{sid} jadi {rp(final)}/1K (kunci manual)."
     if final > p:
@@ -518,6 +534,7 @@ async def svc_add(c: CallbackQuery, state: FSMContext):
 @router.message(A.svc_add)
 async def svc_add_msg(m: Message, state: FSMContext):
     ok, bad = 0, []
+    created = []
     for line in (m.text or "").splitlines():
         if not line.strip():
             continue
@@ -526,13 +543,19 @@ async def svc_add_msg(m: Message, state: FSMContext):
             cid = await db.get_or_create_category(p[0])
             pid = toint(p[6]) if len(p) > 6 and p[6] else None
             ptype = normalize_type(p[7]) if len(p) > 7 and p[7] else "default"
+            price = toint(p[2])
             await db.x("INSERT INTO services(category_id,name,price_per_1k,min_qty,max_qty,description,"
                        "provider_id,provider_type,source) VALUES(?,?,?,?,?,?,?,?,?)",
-                       (cid, p[1], toint(p[2]), toint(p[3]), toint(p[4]), p[5] if len(p) > 5 else "",
+                       (cid, p[1], price, toint(p[3]), toint(p[4]), p[5] if len(p) > 5 else "",
                         pid, ptype, "provider" if pid else "manual"))
+            if len(created) < 8:
+                created.append({"name": p[1], "category": p[0], "price": price})
             ok += 1
         except (ValueError, IndexError):
             bad.append(line)
+    if created:
+        await ui.catalog_update_notice(m.bot, {"title": "LAYANAN BARU",
+                                               "new_items": created, "new_count": ok})
     await state.clear()
     t = f"✅ {ok} layanan ditambahkan."
     if bad:

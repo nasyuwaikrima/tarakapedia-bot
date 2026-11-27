@@ -367,8 +367,12 @@ async def grouped_categories() -> list[dict]:
 
 
 async def sync_services(items: list[dict]) -> dict:
-    """Upsert layanan provider ke database. Harga hanya naik, tidak pernah turun otomatis."""
-    added = updated = 0
+    """Upsert layanan provider ke database. Harga hanya naik, tidak pernah turun otomatis.
+
+    Mengembalikan juga ringkasan perubahan layanan/harga untuk diumumkan.
+    """
+    added = updated = changed = 0
+    new_items, price_changes = [], []
     for it in items:
         pid = int(it["id"])
         modal = max(0, int(it.get("price") or 0))
@@ -384,13 +388,19 @@ async def sync_services(items: list[dict]) -> dict:
         cur = await q1("SELECT * FROM services WHERE provider_id=?", (pid,))
         now_at = now()
         if cur:
-            price = cur["price_per_1k"]
+            old_price = cur["price_per_1k"]
+            price = old_price
             if cur["auto_price"]:
                 price = max(price, await suggested_price(modal))
             await x("UPDATE services SET name=?,category_id=?,provider_type=?,provider_price=?,provider_min=?,"
                     "provider_max=?,provider_refill=?,provider_avg=?,description=?,min_qty=?,max_qty=?,"
                     "price_per_1k=?,synced_at=?,source='provider' WHERE id=?",
                     (name, cid, ptype, modal, mn, mx, refill, avg, desc, mn, mx, price, now_at, cur["id"]))
+            if price != old_price:
+                changed += 1
+                if len(price_changes) < 8:
+                    price_changes.append({"name": name, "category": category,
+                                          "old": old_price, "new": price})
             updated += 1
         else:
             price = await suggested_price(modal) or 1000
@@ -398,11 +408,15 @@ async def sync_services(items: list[dict]) -> dict:
                     "provider_id,provider_type,provider_price,provider_min,provider_max,provider_refill,"
                     "provider_avg,auto_price,synced_at,source) VALUES(?,?,?,?,?,?,1,?,?,?,?,?,?,?,1,?,'provider')",
                     (cid, name, price, mn, mx, desc, pid, ptype, modal, mn, mx, refill, avg, now_at))
+            if len(new_items) < 8:
+                new_items.append({"name": name, "category": category, "price": price})
             added += 1
     # Layanan demo lama tidak ikut tampil setelah katalog asli masuk.
     if items:
         await x("UPDATE services SET active=0 WHERE source='manual' AND name LIKE '%[Demo]%'")
-    return dict(added=added, updated=updated, total=len(items))
+    return dict(added=added, updated=updated, total=len(items),
+                new_count=added, changed_count=changed,
+                new_items=new_items, price_changes=price_changes)
 
 
 # ---------- users ----------

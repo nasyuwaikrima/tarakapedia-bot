@@ -1,3 +1,4 @@
+import asyncio
 import html
 import re
 import time
@@ -7,6 +8,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, Inpu
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import db
+import logcard
 from config import (ADMIN_CONTACT_URL, ADMIN_IDS, BOT_NAME, CHANNEL_LOG, CHANNEL_LOG_URL,
                     CHANNEL_REGISTRY_URL, CUSTOM_MENU_PHOTO, MENU_PHOTO, WEBSITE_URL)
 
@@ -52,13 +54,23 @@ def user_link(uid: int, name: str | None = None, username: str | None = None) ->
     return f'<a href="tg://user?id={int(uid)}">{esc(label)[:60]}</a>'
 
 
-async def log_channel(bot, text: str):
-    """Kirim log transaksi ke channel. Gagal kirim tidak boleh menggagalkan transaksi."""
+async def log_channel(bot, text: str, card_title: str | None = None):
+    """Kirim log transaksi ke channel sebagai kartu dashboard + caption.
+
+    Gambar dibuat otomatis per transaksi. Bila generate/kirim foto gagal, log
+    tetap terkirim sebagai teks agar transaksi tidak terdampak.
+    """
     if not CHANNEL_LOG:
         return
-    footer = f"\n\n🔗 Gabung: {CHANNEL_REGISTRY_URL}" if CHANNEL_REGISTRY_URL else ""
+    caption = text + (f"\n\n🔗 Gabung: {CHANNEL_REGISTRY_URL}" if CHANNEL_REGISTRY_URL else "")
     try:
-        await bot.send_message(CHANNEL_LOG, text + footer, disable_web_page_preview=True)
+        await bot.send_photo(CHANNEL_LOG, photo=logcard.photo(text, card_title),
+                             caption=caption[:1000], disable_web_page_preview=True)
+        return
+    except Exception:
+        pass
+    try:
+        await bot.send_message(CHANNEL_LOG, caption, disable_web_page_preview=True)
     except Exception:
         pass
 
@@ -258,6 +270,45 @@ async def notify_admins(bot, text: str):
             await bot.send_message(a, text)
         except Exception:
             pass
+
+
+async def catalog_update_notice(bot, info: dict, broadcast: bool = True) -> tuple[int, int]:
+    """Umumkan layanan baru / perubahan harga ke channel log dan semua user.
+
+    `info` berasal dari db.sync_services() atau aksi admin. Hanya harga jual
+    yang ditampilkan — modal dan ID provider tidak pernah ikut terkirim.
+    """
+    new_count = int(info.get("new_count", len(info.get("new_items") or [])))
+    changed_count = int(info.get("changed_count", len(info.get("price_changes") or [])))
+    if not new_count and not changed_count:
+        return 0, 0
+
+    title = str(info.get("title") or "PEMBARUAN KATALOG")
+    lines = [f"📢 <b>{esc(title)}</b>"]
+    if new_count:
+        lines.append(f"🆕 Layanan baru : <b>{num(new_count)}</b>")
+    if changed_count:
+        lines.append(f"💲 Perubahan harga : <b>{num(changed_count)}</b>")
+    for x in (info.get("new_items") or [])[:4]:
+        lines.append(f"• {esc(str(x['name'])[:40])} • {rp(x['price'])}")
+    for x in (info.get("price_changes") or [])[:4]:
+        lines.append(f"• {esc(str(x['name'])[:28])} : {rp(x['old'])} menjadi {rp(x['new'])}")
+    caption = "\n".join(lines) + "\n\n🛒 Cek layanan terbaru lewat tombol di bawah."
+
+    await log_channel(bot, caption, card_title=title)
+    if not broadcast:
+        return 0, 0
+
+    markup = kb([("🛒 Lihat Layanan", "ord")])
+    ok = fail = 0
+    for u in await db.q("SELECT id FROM users WHERE banned=0"):
+        try:
+            await bot.send_message(u["id"], caption, reply_markup=markup)
+            ok += 1
+        except Exception:
+            fail += 1
+        await asyncio.sleep(0.05)
+    return ok, fail
 
 
 def uptime() -> str:

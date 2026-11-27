@@ -44,13 +44,19 @@ class Guard(BaseMiddleware):
         return await handler(event, data)
 
 
-async def sync_catalog() -> int:
+async def sync_catalog(bot: Bot | None = None, notify: bool = False) -> dict:
     if not provider.configured or await db.setting("auto_sync") != "1":
-        return 0
+        return dict(total=0, new_count=0, changed_count=0, new_items=[], price_changes=[])
     fav = await db.setting("service_fav") == "1"
     items = await provider.services(service_fav=fav)
     result = await db.sync_services(items)
-    return result["total"]
+    if notify and bot and (result["new_count"] or result["changed_count"]):
+        try:
+            ok, fail = await ui.catalog_update_notice(bot, result)
+            log.info("Notifikasi katalog: %d terkirim, %d gagal", ok, fail)
+        except Exception:
+            log.exception("Gagal mengumumkan perubahan katalog")
+    return result
 
 
 async def poll_invoices(bot: Bot, offset: int = 0) -> int:
@@ -129,9 +135,11 @@ async def worker(bot: Bot):
                         pass
 
                 if time.monotonic() - last_sync > 1800:
-                    n = await sync_catalog()
-                    if n:
-                        log.info("Katalog provider disinkronisasi: %d layanan", n)
+                    res = await sync_catalog(bot, notify=True)
+                    if res["total"]:
+                        log.info("Katalog provider disinkronisasi: %d layanan "
+                                 "(baru=%d, harga berubah=%d)", res["total"],
+                                 res["new_count"], res["changed_count"])
                     last_sync = time.monotonic()
         except Exception:
             log.exception("worker error")
@@ -153,8 +161,8 @@ async def main():
     dp.include_router(user.router)  # user paling akhir (ada fallback)
     if provider.configured:
         try:
-            n = await sync_catalog()
-            log.info("Sinkron awal katalog: %d layanan", n)
+            res = await sync_catalog(bot)
+            log.info("Sinkron awal katalog: %d layanan", res["total"])
         except Exception:
             log.warning("Gagal sinkron katalog saat start", exc_info=True)
     else:
