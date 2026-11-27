@@ -1,4 +1,5 @@
 import html
+import re
 import time
 
 from aiogram.exceptions import TelegramBadRequest
@@ -24,6 +25,25 @@ def rp(n) -> str:
 
 def num(n) -> str:
     return f"{int(n):,}".replace(",", ".")
+
+
+def clean_desc(text: str | None, limit: int = 320) -> str:
+    """Bersihkan deskripsi provider jadi poin rapi untuk caption Telegram."""
+    raw = str(text or "")
+    raw = re.sub(r"(?i)<br\s*/?>|</?p\b[^>]*>|</?div\b[^>]*>|</?li\b[^>]*>|</?ul\b[^>]*>", "\n", raw)
+    raw = re.sub(r"<[^>]+>", "", raw)
+    raw = html.unescape(raw).replace("\r", "\n")
+    lines, seen = [], set()
+    for part in raw.split("\n"):
+        line = re.sub(r"\s+", " ", part).strip(" •–-\u00a0")
+        key = line.lower()
+        if not line or key in seen:
+            continue
+        seen.add(key)
+        lines.append(line[:90])
+        if sum(len(x) + 1 for x in lines) >= limit:
+            break
+    return "\n".join(lines)
 
 
 def user_link(uid: int, name: str | None = None, username: str | None = None) -> str:
@@ -164,15 +184,15 @@ async def menu_caption(uid: int) -> str:
     u = await db.get_user(uid)
     s = await db.global_stats()
     t = (f"{LINE}\n💎 <b>{esc(BOT_NAME.upper())} · SMM PANEL</b>\n{LINE}\n\n"
-         f"Hai kak {esc(u['name'] or 'kaw')} 👋 selamat datang kembali!\n\n"
+         f"Selamat datang kembali, {esc(u['name'] or 'Pengguna')} 👋\n\n"
          f"┌ 💰 Saldo  : <b>{rp(u['balance'])}</b>\n"
          f"├ 📦 Order  : <b>{num(u['total_order'])}</b> kali\n"
          f"└ 👥 Member : <b>{num(s['users'])}</b> orang\n\n")
     t += await top_spender_block(3) + "\n\n"
     t += ("⚡ Pesanan diproses otomatis 24/7\n"
-          "💸 Deposit QRIS — cek lunas tanpa ribet\n"
-          "🎁 Ajak teman, dapat komisi referral\n\n"
-          "Silakan pilih menu di bawah ya, kak 👇")
+          "💸 Deposit QRIS dengan konfirmasi otomatis\n"
+          "🎁 Program referral dengan komisi margin order\n\n"
+          "Silakan pilih menu berikut 👇")
     ann = await db.setting("announcement")
     if ann:
         t += f"\n\n📢 <b>Info:</b> {esc(ann[:140])}"
@@ -225,7 +245,7 @@ async def referral_paid_notice(bot, oid: int, bonus: int, ref_id: int):
         return
     try:
         await bot.send_message(ref_id, f"💸 Komisi referral <b>{rp(bonus)}</b> dari order "
-                                       f"<code>#{oid}</code> yang sudah selesai. Makasih ya!")
+                                       f"<code>#{oid}</code> yang sudah selesai. Terima kasih.")
     except Exception:
         pass
     await log_channel(bot, f"🎁 <b>KOMISI REFERRAL</b> #{oid}\n"
@@ -273,5 +293,5 @@ async def dashboard(uid: int) -> str:
     ann = await db.setting("announcement")
     if ann:
         t += f"\n📢 <b>Pengumuman</b>\n{esc(ann)}\n"
-    t += f"\n{LINE}\n🚀 <i>Silakan pilih menu transaksi di bawah, sistem memproses otomatis dan cepat!</i>"
+    t += f"\n{LINE}\n🚀 <i>Silakan pilih menu transaksi berikut. Sistem memproses pesanan secara otomatis.</i>"
     return t

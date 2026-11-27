@@ -133,14 +133,14 @@ async def top_orders_cb(c: CallbackQuery):
 @router.callback_query(F.data == "misc")
 async def misc_cb(c: CallbackQuery):
     await show(c, f"{LINE}\n🧩 <b>MENU LAINNYA</b>\n{LINE}\n\n"
-                  "Toko app, profil, referral, misi, website, dan admin ada di sini ya, kak.",
+                  "Toko aplikasi, profil, referral, misi, website, dan kontak admin tersedia di sini.",
                ui.misc_kb(c.from_user.id))
 
 
 @router.callback_query(F.data == "gate:check")
 async def gate_check(c: CallbackQuery, state: FSMContext):
     if await channels.gate(c, c.bot, state):
-        await ui.answer_cb(c, "Kak, masih belum gabung ke channel yang ditandai ❌ ya.", True)
+        await ui.answer_cb(c, "Anda belum bergabung ke channel yang ditandai ❌. Silakan gabung terlebih dahulu.", True)
         return
     await ui.answer_cb(c, "✅ Terima kasih! Semua channel sudah terhubung.")
     await _menu(c, state)
@@ -298,7 +298,7 @@ async def dep_history(c: CallbackQuery):
                   f"   <code>{esc(d['invoice_id'] or d['ref'] or '-')}</code> • <i>{esc(d['created_at'])}</i>\n"
                   f"   ──────────\n")
     else:
-        t += "Belum ada deposit. Yuk isi saldo lewat tombol di bawah 👇"
+        t += "Belum ada deposit. Silakan isi saldo melalui tombol berikut 👇"
     buttons = [[(f"{DEP_ICON.get(d['status'], '•')} #{d['id']} • {rp(d['amount'])}", f"dep:view:{d['id']}")]
                for d in rows[:8]]
     buttons += [[("💰 Deposit Baru", "dep")], BACK]
@@ -307,7 +307,7 @@ async def dep_history(c: CallbackQuery):
 
 @router.callback_query(F.data.startswith("dep:pay:"))
 async def dep_pay_stub(c: CallbackQuery, state: FSMContext):
-    await answer_cb(c, "Mode demo sudah nonaktif. Bayar lewat QRIS ya, kak.", True)
+    await answer_cb(c, "Mode demo sudah nonaktif. Silakan bayar melalui QRIS.", True)
     await dep_menu(c, state)
 
 
@@ -317,7 +317,7 @@ async def dep_cancel_stub(c: CallbackQuery):
 
 # ---------- order layanan (provider real) ----------
 KUOTA_PENUH = ("⚠️ Maaf, kuota order layanan ini sedang penuh. "
-               "Coba jumlah lebih kecil atau coba lagi nanti ya, kak.")
+               "Silakan coba jumlah lebih kecil atau ulangi beberapa saat lagi.")
 
 TYPE_LABELS = {
     "default": "Default", "package": "Paket", "custom_comment": "Komentar Custom",
@@ -355,7 +355,7 @@ async def _harga(d: dict, s) -> int:
 async def _konfirmasi(ev, state: FSMContext, s, d: dict):
     price = await _harga(d, s)
     u = await db.get_user(ev.from_user.id)
-    cukup = "✅ cukup" if u["balance"] >= price else "⚠️ belum cukup, deposit dulu ya"
+    cukup = "✅ cukup" if u["balance"] >= price else "⚠️ belum cukup, silakan deposit"
     t = (f"{LINE}\n🧾 <b>KONFIRMASI PESANAN</b>\n{LINE}\n\n"
          f"🏷 Layanan : <b>{esc(s['name'])}</b>\n"
          f"📋 Format : {TYPE_LABELS.get(s['provider_type'], s['provider_type'])}\n"
@@ -366,7 +366,7 @@ async def _konfirmasi(ev, state: FSMContext, s, d: dict):
         t += f"✍️ {esc(LABEL_FIELDS.get(k, k)).capitalize()} : <code>{esc(v[:160])}</code>\n"
     t += (f"💸 Harga : <b>{rp(price)}</b>\n"
           f"🏦 Saldo : <b>{rp(u['balance'])}</b> — {cukup}\n\n"
-          f"Pastikan target sudah benar, kak. Setelah konfirmasi pesanan langsung diproses otomatis ⚡")
+          f"Pastikan target sudah benar. Pesanan akan diproses otomatis setelah konfirmasi ⚡")
     await state.set_state(S.ord_confirm)
     await ev.answer(t, reply_markup=kb([("✅ Bayar & Pesan", "ord:ok"), ("❌ Batal", "menu")]))
 
@@ -394,7 +394,7 @@ async def _ord_groups(ev, page: int):
     """Halaman platform: Instagram, TikTok, YouTube, dll."""
     groups = await db.grouped_categories()
     if not groups:
-        return await show(ev, "Belum ada layanan tersedia. Hubungi admin ya, kak.", kb(BACK))
+        return await show(ev, "Belum ada layanan tersedia. Silakan hubungi admin.", kb(BACK))
     pages = max(1, math.ceil(len(groups) / GROUP_PER))
     page = max(0, min(page, pages - 1))
     chunk = groups[page * GROUP_PER:(page + 1) * GROUP_PER]
@@ -412,7 +412,7 @@ async def _ord_groups(ev, page: int):
     await show(ev, f"{LINE}\n🛒 <b>ORDER LAYANAN</b>\n{LINE}\n\n"
                    f"📂 Dikelompokkan per platform • 💸 <b>termurah → termahal</b>\n"
                    f"📊 {len(groups)} platform • halaman {page + 1}/{pages}\n\n"
-                   f"Pilih platform:", kb(*rows))
+                   f"Silakan pilih platform:", kb(*rows))
 
 
 @router.callback_query(F.data == "ord")
@@ -450,7 +450,7 @@ async def ord_group_cb(c: CallbackQuery):
     await show(c, f"{LINE}\n{group['emoji']} <b>{esc(group['label'].upper())}</b>\n{LINE}\n\n"
                   f"📁 {len(cats)} kategori • {ui.num(group['count'])} layanan\n"
                   f"💸 Termurah dulu • halaman {page + 1}/{pages}\n\n"
-                  f"Pilih kategori:", kb(*rows))
+                  f"Silakan pilih kategori:", kb(*rows))
 
 
 @router.callback_query(F.data.startswith("ord:c:"))
@@ -481,7 +481,7 @@ async def ord_cat(c: CallbackQuery):
     await show(c, f"{LINE}\n{cat['emoji']} <b>{esc(cat['name'].upper())}</b>\n{LINE}\n\n"
                   f"🏷 {emoji} {esc(label)}\n"
                   f"💸 Termurah dulu • {len(svcs)} layanan • halaman {page + 1}/{pages}\n"
-                  f"🛡 Garansi refill • ⚡ Proses cepat\n\nPilih layanan:", kb(*rows))
+                  f"🛡 Garansi refill • ⚡ Proses cepat\n\nSilakan pilih layanan:", kb(*rows))
 
 
 @router.callback_query(F.data.startswith("ord:s:"))
@@ -490,13 +490,18 @@ async def ord_service(c: CallbackQuery):
     if not s:
         return await answer_cb(c, "Layanan tidak tersedia.", True)
     estimasi = str(s["provider_avg"] or "").strip()[:90] or "Proses cepat, otomatis"
+    desc = ui.clean_desc(s["description"])
+    if desc and desc.lower() != str(s["name"]).strip().lower():
+        spesifikasi = "\n".join(f"• {esc(line)}" for line in desc.splitlines()[:6])
+    else:
+        spesifikasi = "• Layanan diproses otomatis oleh provider."
     await show(c, f"{LINE}\n📌 <b>{esc(s['name'])}</b>\n{LINE}\n\n"
                   f"📋 Format : {TYPE_LABELS.get(s['provider_type'], s['provider_type'])}\n"
                   f"💸 Harga : <b>{rp(await db.effective_price(s))}</b> / 1.000\n"
                   f"🔢 Min/Max : {ui.num(s['min_qty'])} / {ui.num(s['max_qty'])}\n"
                   f"🛡 Garansi : {'✅ Ada refill' if s['provider_refill'] else '❌ Tanpa refill'}\n"
                   f"⏱ Estimasi : <i>{esc(estimasi)}</i>\n\n"
-                  f"📝 {esc(s['description'] or 'Layanan diproses otomatis oleh provider.')}\n\n"
+                  f"📝 <b>Spesifikasi layanan:</b>\n{spesifikasi}\n\n"
                   f"💡 Tagihan menyesuaikan jumlah/baris yang Anda kirim.",
                kb([("🛒 Pesan Sekarang", f"ord:go:{s['id']}")], [("⬅️ Kembali", f"ord:c:{s['category_id']}:0")]))
 
@@ -564,7 +569,7 @@ async def ord_ok(c: CallbackQuery, state: FSMContext):
         return await _menu(c, state)
     if not s["provider_id"]:
         await state.clear()
-        return await show(c, "⚠️ Layanan ini belum tersedia. Hubungi admin ya, kak.", kb(BACK))
+        return await show(c, "⚠️ Layanan ini belum tersedia. Silakan hubungi admin.", kb(BACK))
     extra = d.get("extra") or {}
     qty = d.get("qty")
     price = await _harga(d, s)
@@ -584,7 +589,7 @@ async def ord_ok(c: CallbackQuery, state: FSMContext):
         await db.cancel_order(oid)
         await ui.log_channel(c.bot, f"↩️ <b>REFUND ORDER</b> #{oid}\n"
                                     f"👤 {ui.user_link(c.from_user.id)}\n💸 {rp(price)} dikembalikan • gagal diproses")
-        return await show(c, "⚠️ Pesanan belum bisa diproses. Saldo Anda dikembalikan, ya kak.", kb(BACK))
+        return await show(c, "⚠️ Pesanan belum dapat diproses. Saldo Anda dikembalikan.", kb(BACK))
     await db.x("UPDATE orders SET provider_order_id=? WHERE id=?", (pid, oid))
     u = await db.get_user(c.from_user.id)
     await show(c, f"✅ <b>Pesanan Berhasil Dibuat!</b>\n\n├ Order ID : <code>#{oid}</code>\n"
@@ -606,7 +611,7 @@ async def shop(c: CallbackQuery):
         return await show(c, "Belum ada produk.", kb(BACK))
     rows = [[(f"{p['name'][:26]} • {rp(p['price'])}", f"shop:p:{p['id']}")] for p in ps]
     rows += [[("🗂 Pembelian Saya", "shop:my")], BACK]
-    await show(c, f"{LINE}\n📱 <b>TOKO APLIKASI</b>\n{LINE}\n\nPilih produk digital:", kb(*rows))
+    await show(c, f"{LINE}\n📱 <b>TOKO APLIKASI</b>\n{LINE}\n\nSilakan pilih produk digital:", kb(*rows))
 
 
 @router.callback_query(F.data.startswith("shop:p:"))
@@ -666,7 +671,7 @@ async def my_orders(c: CallbackQuery):
             label = f"📊 Cek Refill #{o['id']}" if o["refill_id"] else f"🔁 Refill #{o['id']}"
             kr.append([(label, f"ord:refill:{o['id']}")])
     if not rows:
-        t += "Belum ada pesanan. Yuk cari layanan termurah lewat menu Order 👇"
+        t += "Belum ada pesanan. Silakan cari layanan termurah melalui menu Order 👇"
     kr += [[("🔄 Refresh", "myord")], BACK]
     await show(c, t, kb(*kr))
 
@@ -686,9 +691,9 @@ async def ord_refill(c: CallbackQuery):
             rid = await provider.refill(o["provider_order_id"])
             await db.x("UPDATE orders SET refill_id=?, refill_status='Pending', checked_at=? WHERE id=?",
                        (rid, db.now(), oid))
-            msg = "✅ Refill diajukan. Cek statusnya lewat tombol ini, ya."
+            msg = "✅ Refill diajukan. Silakan cek statusnya melalui tombol ini."
     except Exception:
-        msg = "⚠️ Refill belum bisa diproses. Coba lagi nanti, ya."
+        msg = "⚠️ Refill belum dapat diproses. Silakan ulangi beberapa saat lagi."
     await answer_cb(c, msg, True)
     await my_orders(c)
 
@@ -785,6 +790,6 @@ async def claim(c: CallbackQuery):
 async def fallback(m: Message):
     cmd = (m.text or "").strip().split(maxsplit=1)[0].split("@")[0].lower()
     if cmd in ("/admin", "/users"):
-        return await m.answer("⛔ Perintah ini khusus admin ya, kak.")
-    await m.answer("Hai kak 👋 Semua menu ada di bawah ya — deposit, order termurah, dan cek pesanan.",
+        return await m.answer("⛔ Perintah ini khusus admin.")
+    await m.answer("Selamat datang 👋 Berikut menu utama: deposit, order termurah, dan cek pesanan.",
                    reply_markup=ui.main_kb(m.from_user.id))

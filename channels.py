@@ -108,8 +108,8 @@ def join_caption(missing) -> str:
         rows.append(f"{'❌' if left else '✅'} {label} — <a href=\"{url}\">{ui.esc(chat)}</a>")
     return (f"{ui.LINE}\n🔒 <b>WAJIB GABUNG 2 CHANNEL</b>\n{ui.LINE}\n\n"
             + "\n".join(rows)
-            + "\n\nKak, kamu belum bergabung / baru saja keluar dari channel. "
-              "Gabung dulu ya, lalu tekan <b>✅ Saya sudah gabung</b>.\n\n"
+            + "\n\nAnda belum bergabung atau baru saja keluar dari channel. "
+              "Silakan bergabung, lalu tekan <b>✅ Saya sudah gabung</b>.\n\n"
               "Channel dipakai sebagai registrasi &amp; log transaksi supaya tidak ketinggalan info.")
 
 
