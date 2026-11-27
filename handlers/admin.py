@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery, FSInputFile, Message
 
 import db
 import limits
+import logcard
 import ui
 from config import ADMIN_IDS, CUSTOM_MENU_PHOTO, DB_PATH
 from providers import normalize_type, provider
@@ -79,6 +80,7 @@ def panel_kb():
         [("🎯 Misi", "adm:msn"), ("⚙️ Pengaturan", "adm:set")],
         [("🌐 Provider API", "adm:api"), ("📸 Foto Menu", "adm:menuphoto")],
         [("📢 Broadcast", "adm:bc"), ("💾 Backup DB", "adm:bak")],
+        [("🧪 Uji Simulasi", "adm:testsim")],  # TEMP: hapus setelah simulasi
         [("⬅️ Menu Utama", "menu")],
     )
 
@@ -819,6 +821,28 @@ async def set_edit_msg(m: Message, state: FSMContext):
     await db.set_setting(key, val)
     await state.clear()
     await m.answer("✅ Tersimpan.", reply_markup=kb([("⚙️ Pengaturan", "adm:set")], PANEL))
+
+
+# ---------- TEMP: simulasi UI, hapus setelah pengetesan ----------
+@router.callback_query(F.data == "adm:testsim")
+async def testsim_cb(c: CallbackQuery):
+    """TEMP: pratinjau kartu & poster tanpa kirim ke channel atau user lain."""
+    await c.answer("Menjalankan simulasi...")
+    sample = ("🛒 <b>CONTOH ORDER SELESAI</b>\n"
+              "👤 @contoh\n"
+              "📦 Instagram Followers 100\n"
+              "💸 Rp 25.000")
+    report = ("🧪 <b>SIMULASI UI</b>\n"
+              "Kartu log: siap\n"
+              "Poster welcome: siap\n"
+              "Channel: tidak ada pengiriman\n"
+              "User lain: tidak ada pengiriman")
+    await c.message.answer_photo(photo=logcard.photo(sample, "CONTOH ORDER"),
+                                 caption=report[:1000])
+    await c.message.answer_photo(photo=logcard.welcome_photo("@contoh"),
+                                 caption="🧪 <b>SIMULASI POSTER WELCOME</b>\nUsername polos, tanpa mention.")
+    await c.message.answer("✅ Simulasi selesai. Tidak ada pesan yang dikirim ke channel atau user lain.",
+                           reply_markup=panel_kb())
 
 
 # ---------- broadcast ----------
