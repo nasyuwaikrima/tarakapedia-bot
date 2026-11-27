@@ -32,6 +32,8 @@ TEAL = (64, 226, 183)
 BLUE = (92, 160, 252)
 VIOLET = (170, 140, 252)
 GOLD = (255, 204, 104)
+GOLD_SOFT = (255, 231, 166)
+GOLD_DARK = (124, 88, 28)
 
 TAG = re.compile(r"<[^>]+>")
 EMOJI = re.compile(
@@ -100,6 +102,8 @@ def _base(height: int, glows=True):
         od.line((0, y, W, y), fill=(255, 255, 255, 4))
     od.ellipse((W - 340, -220, W + 160, 280), fill=(*BLUE, 26))
     od.ellipse((-200, height - 340, 240, height + 130), fill=(*TEAL, 20))
+    for i in range(0, W + height, 34):
+        od.line((i, 0, i - height, height), fill=(*GOLD, 3))
     img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
     return img, ImageDraw.Draw(img)
 
@@ -145,8 +149,9 @@ def render(text, title: str | None = None, badge: str | None = None,
     f_footer = _font(19)
     stamp = _stamp()
 
-    _gradient_bar(d, (PAD, 48, W - PAD, 57), [TEAL, BLUE, VIOLET])
-    d.ellipse((PAD, 78, PAD + 50, 128), fill=(20, 58, 61))
+    _gradient_bar(d, (PAD, 48, W - PAD, 58), [TEAL, GOLD, VIOLET])
+    d.ellipse((PAD, 78, PAD + 50, 128), fill=(20, 58, 61),
+              outline=GOLD, width=2)
     d.text((PAD + 15, 86), "T", font=_font(29, True), fill=TEAL)
     d.text((PAD + 70, 88), "TARAKAPEDIA  ·  SMM PANEL", font=f_brand, fill=TEXT)
     tw = int(d.textlength(stamp, font=f_small))
@@ -154,15 +159,18 @@ def render(text, title: str | None = None, badge: str | None = None,
     d.ellipse((W - PAD - tw - 60, 97, W - PAD - tw - 50, 107), fill=TEAL)
     d.text((W - PAD - tw - 38, 86), stamp, font=f_small, fill=TEXT)
 
-    d.text((PAD, 162), "TARAKAPEDIA  /  AKTIVITAS LANGSUNG", font=f_label, fill=BLUE)
-    d.text((PAD, 205), _fit(d, data["title"], f_title, 860), font=f_title, fill=TEXT)
+    d.text((PAD, 160), "TARAKAPEDIA  /  PREMIUM ACTIVITY", font=f_label, fill=GOLD)
+    d.text((PAD, 202), _fit(d, data["title"], f_title, 860), font=f_title, fill=TEXT)
+    d.line((PAD, 274, PAD + 150, 274), fill=GOLD, width=3)
     money_badge = bool(MONEY.fullmatch(data["badge"]))
     badge_font = _font(28, True) if money_badge else _font(23, True)
     bw = int(d.textlength(data["badge"], font=badge_font)) + 56
     bx = max(PAD + 880, W - PAD - bw)
     d.rounded_rectangle((bx, 250, W - PAD, 312), radius=22,
-                        fill=(24, 62, 56) if money_badge else (30, 43, 78))
-    d.text((bx + 28, 266), data["badge"], font=badge_font, fill=GOLD if money_badge else BLUE)
+                        fill=(24, 62, 56) if money_badge else (30, 43, 78),
+                        outline=GOLD if money_badge else STROKE, width=2)
+    d.text((bx + 28, 266), data["badge"], font=badge_font,
+           fill=GOLD_SOFT if money_badge else BLUE)
 
     tiles = data["tiles"] or [
         ("AKTIVITAS", _fit(d, data["title"], f_value, 270)),
@@ -175,8 +183,9 @@ def render(text, title: str | None = None, badge: str | None = None,
         x = PAD + i * (tw3 + gap)
         _shadow_card(d, (x, 344, x + tw3, 488), CARD if i % 2 == 0 else CARD_ALT)
         color = [TEAL, GOLD, VIOLET][i]
-        d.ellipse((x + 24, 366, x + 68, 410), fill=color)
-        d.text((x + 34, 372), label[:1], font=_font(23, True), fill=(10, 16, 32))
+        _gradient_bar(d, (x + 24, 350, x + tw3 - 24, 355), [color, GOLD_SOFT])
+        d.ellipse((x + 24, 368, x + 68, 412), fill=color, outline=GOLD_SOFT, width=1)
+        d.text((x + 34, 374), label[:1], font=_font(23, True), fill=(10, 16, 32))
         d.text((x + 24, 424), _fit(d, label, f_label, tw3 - 48), font=f_label, fill=MUTED)
         d.text((x + 24, 448), _fit(d, value, _font(27, True), tw3 - 48),
                font=_font(27, True), fill=TEXT)
@@ -185,18 +194,20 @@ def render(text, title: str | None = None, badge: str | None = None,
     for i, row in enumerate(rows):
         _shadow_card(d, (PAD, y, W - PAD, y + 80), CARD if i % 2 == 0 else CARD_ALT, radius=20,
                      outline=SHADOW)
-        color = [TEAL, BLUE, VIOLET][i % 3]
-        d.rounded_rectangle((PAD + 20, y + 18, PAD + 60, y + 62), radius=12, fill=color)
+        color = [TEAL, GOLD, VIOLET][i % 3]
+        d.rounded_rectangle((PAD + 20, y + 18, PAD + 60, y + 62), radius=12, fill=color,
+                            outline=GOLD_SOFT, width=1)
         initial = next((c.upper() for c in row if c.isalnum()), str(i + 1))
         d.text((PAD + 32, y + 27), initial, font=_font(21, True), fill=(10, 16, 32))
-        d.text((PAD + 78, y + 24), _fit(d, row, f_row, W - 2 * PAD - 120), font=f_row, fill=TEXT)
+        d.text((PAD + 78, y + 24), _fit(d, row, f_row, W - 2 * PAD - 152), font=f_row, fill=TEXT)
+        d.text((W - PAD - 46, y + 22), "›", font=_font(32, True), fill=GOLD_SOFT)
         y += 98
 
-    d.line((PAD, height - 92, W - PAD, height - 92), fill=STROKE, width=2)
+    _gradient_bar(d, (PAD, height - 94, W - PAD, height - 90), [GOLD_DARK, GOLD, GOLD_DARK])
     d.text((PAD, height - 66), _fit(d, data["footer"], f_footer, W - 2 * PAD - 210),
            font=f_footer, fill=MUTED)
-    d.ellipse((W - PAD - 170, height - 58, W - PAD - 158, height - 46), fill=TEAL)
-    d.text((W - PAD - 146, height - 66), "VERIFIED LIVE", font=f_footer, fill=MUTED)
+    d.ellipse((W - PAD - 170, height - 58, W - PAD - 158, height - 46), fill=GOLD)
+    d.text((W - PAD - 146, height - 66), "VERIFIED LIVE", font=f_footer, fill=GOLD_SOFT)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
@@ -217,25 +228,28 @@ def render_welcome(name: str) -> io.BytesIO:
     f_h2 = _font(44, True)
     f_name = _font(46, True)
     f_body = _font(24)
-    f_step = _font(27, True)
     f_desc = _font(20)
     f_small = _font(19)
 
-    _gradient_bar(d, (PAD, 48, W - PAD, 58), [VIOLET, TEAL, BLUE])
+    _gradient_bar(d, (PAD, 48, W - PAD, 60), [GOLD, VIOLET, TEAL])
 
     # Hero sambutan.
-    d.text((PAD, 108), "SELAMAT DATANG", font=f_kicker, fill=TEAL)
+    d.text((PAD, 108), "SELAMAT DATANG  ·  MEMBER BARU", font=f_kicker, fill=GOLD)
     d.text((PAD, 152), "HALO, " + _fit(d, clean_name, f_h1, 820).upper(), font=f_h1, fill=TEXT)
-    d.text((PAD, 252), "Tarakapedia SMM Panel", font=f_h2, fill=VIOLET)
+    d.line((PAD, 244, PAD + 260, 244), fill=GOLD, width=4)
+    d.text((PAD, 258), "Tarakapedia SMM Panel", font=f_h2, fill=GOLD_SOFT)
     d.text((PAD, 326), "Akun Anda sudah aktif. Tiga langkah singkat sebelum mulai memesan.",
            font=f_body, fill=MUTED)
 
     # Kartu identitas dengan status aktif.
-    _shadow_card(d, (PAD, 392, W - PAD, 542), CARD, radius=26)
-    d.ellipse((PAD + 30, 424, PAD + 94, 488), fill=TEAL)
+    _shadow_card(d, (PAD, 392, W - PAD, 542), CARD, radius=26, outline=GOLD)
+    d.ellipse((PAD + 30, 424, PAD + 94, 488), fill=TEAL, outline=GOLD_SOFT, width=2)
     d.text((PAD + 47, 435), "✓", font=_font(38, True), fill=(10, 16, 32))
-    d.text((PAD + 118, 424), _fit(d, clean_name, f_name, 760), font=f_name, fill=TEXT)
-    d.text((PAD + 120, 486), "MEMBER BARU  ·  STATUS AKTIF", font=f_small, fill=MUTED)
+    d.text((PAD + 118, 420), _fit(d, clean_name, f_name, 760), font=f_name, fill=TEXT)
+    d.rounded_rectangle((PAD + 118, 484, PAD + 330, 522), radius=14, fill=(24, 62, 56),
+                        outline=GOLD, width=2)
+    d.text((PAD + 136, 490), "MEMBER BARU", font=f_small, fill=GOLD_SOFT)
+    d.text((PAD + 350, 492), "STATUS AKTIF", font=f_small, fill=MUTED)
 
     # Tiga langkah, bukan metrik transaksi.
     steps = [
@@ -246,20 +260,25 @@ def render_welcome(name: str) -> io.BytesIO:
     gap, cw = 24, (W - 2 * PAD - 48) // 3
     for i, (num, title, desc, color) in enumerate(steps):
         x = PAD + i * (cw + gap)
+        if i < 2:
+            d.line((x + cw, 640, x + cw + gap, 640), fill=GOLD_DARK, width=4)
         _shadow_card(d, (x, 582, x + cw, 864), CARD if i % 2 == 0 else CARD_ALT, radius=24)
-        d.rounded_rectangle((x + 24, 606, x + 92, 672), radius=16, fill=color)
+        _gradient_bar(d, (x + 24, 588, x + cw - 24, 593), [color, GOLD_SOFT])
+        d.rounded_rectangle((x + 24, 606, x + 92, 672), radius=16, fill=GOLD,
+                            outline=GOLD_SOFT, width=1)
         d.text((x + 36, 617), num, font=_font(27, True), fill=(10, 16, 32))
         d.text((x + 24, 700), title, font=_font(23, True), fill=TEXT)
         d.text((x + 24, 748), _fit(d, desc, f_desc, cw - 48), font=f_desc, fill=MUTED)
 
     # Pita syarat keikutsertaan.
-    d.rounded_rectangle((PAD, 912, W - PAD, 1012), radius=24, fill=(20, 58, 61))
-    d.ellipse((PAD + 28, 938, PAD + 58, 968), fill=TEAL)
+    d.rounded_rectangle((PAD, 912, W - PAD, 1012), radius=24, fill=(20, 58, 61),
+                        outline=GOLD, width=2)
+    d.ellipse((PAD + 28, 938, PAD + 58, 968), fill=GOLD)
     d.text((PAD + 78, 936), "LANGKAH PERTAMA: gabung kedua channel, lalu tekan tombol konfirmasi.",
            font=f_body, fill=TEXT)
 
-    d.line((PAD, 1052, W - PAD, 1052), fill=STROKE, width=2)
-    d.text((PAD, 1072), "Selamat bertransaksi  ·  Tarakapedia SMM Panel", font=f_small, fill=MUTED)
+    _gradient_bar(d, (PAD, 1052, W - PAD, 1056), [GOLD_DARK, GOLD, GOLD_DARK])
+    d.text((PAD, 1072), "Selamat bertransaksi  ·  Tarakapedia SMM Panel", font=f_small, fill=GOLD_SOFT)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)

@@ -17,8 +17,8 @@ from config import (ADMIN_IDS, CHANNEL_LOG, CHANNEL_LOG_URL, CHANNEL_REGISTRY,
 log = logging.getLogger("tarakapedia.channels")
 
 CHANNELS = [
-    ("📢 Channel Register", CHANNEL_REGISTRY, CHANNEL_REGISTRY_URL),
-    ("📜 Channel Log", CHANNEL_LOG, CHANNEL_LOG_URL),
+    ("📢 Channel Utama", CHANNEL_REGISTRY, CHANNEL_REGISTRY_URL),
+    ("📜 Channel Aktivitas", CHANNEL_LOG, CHANNEL_LOG_URL),
 ]
 
 # Di Telegram, restricted tetap dianggap sudah gabung. Pending belum disetujui.
@@ -110,7 +110,7 @@ def join_caption(missing) -> str:
             + "\n".join(rows)
             + "\n\nAnda belum bergabung atau baru saja keluar dari channel. "
               "Silakan bergabung, lalu tekan <b>✅ Saya sudah gabung</b>.\n\n"
-              "Channel dipakai sebagai registrasi &amp; log transaksi supaya tidak ketinggalan info.")
+              "Kedua channel dipakai sebagai sumber informasi &amp; bukti transaksi, bukan pendaftaran terpisah.")
 
 
 async def gate(ev, bot: Bot | None = None, state=None, welcome: bool = False,
@@ -126,10 +126,10 @@ async def gate(ev, bot: Bot | None = None, state=None, welcome: bool = False,
         u = await db.get_user(uid)
         who = ui.public_user(uid, u["name"] if u else None, u["username"] if u else None)
         if missing:
-            await ui.log_channel(bot, f"⚠️ <b>REGISTER CHANNEL</b>\n👤 {who}\n"
-                                      f"Keluar/belum join: {ui.esc(', '.join(x[1] for x in missing))}")
+            await ui.log_channel(bot, f"⚠️ <b>AKTIVITAS CHANNEL</b>\n👤 {who}\n"
+                                      f"Belum join: {ui.esc(', '.join(x[1] for x in missing))}")
         elif old is not None:
-            await ui.log_channel(bot, f"✅ <b>REGISTER TERVERIFIKASI</b>\n👤 {who}\n"
+            await ui.log_channel(bot, f"✅ <b>CHANNEL TERVERIFIKASI</b>\n👤 {who}\n"
                                       f"Sudah gabung di 2 channel")
     if not missing:
         return False

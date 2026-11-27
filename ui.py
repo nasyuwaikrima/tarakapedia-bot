@@ -70,7 +70,7 @@ def channel_markup():
     rows = [[("🛒 Lihat Layanan", f"{BOT_URL}?start=layanan"),
              ("💰 Deposit", f"{BOT_URL}?start=deposit")]]
     if CHANNEL_REGISTRY_URL:
-        rows.append([("📢 Channel Register", CHANNEL_REGISTRY_URL)])
+        rows.append([("📢 Channel Utama", CHANNEL_REGISTRY_URL)])
     return kb(*rows)
 
 
@@ -82,7 +82,7 @@ async def log_channel(bot, text: str, card_title: str | None = None):
     """
     if not CHANNEL_LOG:
         return
-    caption = text + (f"\n\n🔗 Gabung: {CHANNEL_REGISTRY_URL}" if CHANNEL_REGISTRY_URL else "")
+    caption = text + (f"\n\n🔗 Channel Utama: {CHANNEL_REGISTRY_URL}" if CHANNEL_REGISTRY_URL else "")
     try:
         await bot.send_photo(CHANNEL_LOG, photo=logcard.photo(text, card_title),
                              caption=caption[:1000], reply_markup=channel_markup())
@@ -104,7 +104,7 @@ async def log_new_member(bot, uid: int, name: str | None, username: str | None,
     who = public_user(uid, name, username)
     caption = f"🆕 <b>MEMBER BARU</b>\n👤 {who}{ref_line}"
     if CHANNEL_REGISTRY_URL:
-        caption += f"\n\n🔗 Gabung: {CHANNEL_REGISTRY_URL}"
+        caption += f"\n\n🔗 Channel Utama: {CHANNEL_REGISTRY_URL}"
     try:
         await bot.send_photo(CHANNEL_LOG, photo=logcard.welcome_photo(who),
                              caption=caption[:1000], reply_markup=channel_markup())
